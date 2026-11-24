@@ -8,7 +8,7 @@ export function StorePicker({ stores }: { stores: Store[] }) {
   const router = useRouter();
   const [number, setNumber] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const go = (id: string) => router.push(`?store=${id}`);
+  const go = (id: string) => router.push(`/stores/${id}`);
 
   if (stores.length === 0) {
     return <div className="card p-6 text-center text-sm text-gray-500">No stores have been set up yet.</div>;

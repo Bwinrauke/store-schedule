@@ -14,7 +14,6 @@ const blankEntry = (day: number): Entry => ({ key: newKey(), day, name: "", role
 const round = (n: number) => Math.round(n * 100) / 100;
 
 export function WeekForm({
-  token,
   storeId,
   week,
   initialEntries,
@@ -23,7 +22,6 @@ export function WeekForm({
   submission,
   today,
 }: {
-  token: string;
   storeId: string;
   week: string;
   initialEntries: Entry[];
@@ -146,7 +144,7 @@ export function WeekForm({
       return;
     }
     start(async () => {
-      const res = await saveWeek({ token, storeId, week, submittedBy: yourName, entries });
+      const res = await saveWeek({ storeId, week, submittedBy: yourName, entries });
       setStatus(res);
       if (!res.error) {
         setDirty(false);

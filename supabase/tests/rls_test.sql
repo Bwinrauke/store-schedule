@@ -9,6 +9,7 @@ update public.profiles set role = 'executive' where email = 'exec@x';
 insert into public.stores (id, name, code) values
   ('10000000-0000-0000-0000-00000000000a', 'Downtown', '101'),
   ('10000000-0000-0000-0000-00000000000b', 'Mall', '102');
+insert into public.store_pins (store_id, pin) values ('10000000-0000-0000-0000-00000000000a', '1234');
 
 -- ---- Manager submission (the web server runs this as service_role) ------
 set role service_role;
@@ -80,6 +81,8 @@ end $$;
 -- ---- The public API key (anon) can do nothing ---------------------------
 reset role; set role anon;
 do $$ begin
+  assert (select count(*) from public.store_pins) = 0, 'anon cannot read PINs';
+  assert (select count(*) from public.pin_attempts) = 0, 'anon cannot read attempts';
   assert (select count(*) from public.stores) = 0, 'anon reads no stores';
   assert (select count(*) from public.shifts) = 0, 'anon reads no shifts';
   assert (select count(*) from public.app_settings) = 0, 'anon cannot read the link secret';
@@ -110,6 +113,7 @@ do $$ declare r record; begin
   assert (select count(*) from public.week_summary('2026-11-22')) = 2, 'all stores listed';
   assert (select submitted_by from public.week_summary('2026-11-22') where store_code = '102') is null, 'unsubmitted store';
   assert (select count(*) from public.app_settings) = 0, 'even executives read the secret only via the server';
+  assert (select count(*) from public.store_pins) = 0, 'executives read PINs only via the server';
 end $$;
 reset role;
 \echo ALL TESTS PASSED

@@ -2,20 +2,21 @@
 
 Weekly employee schedules for every store, in one place.
 
-- **Store managers** need no account. They open one private link, type their
-  store number (or pick the store from a list), then go **day by day**: for
-  each day, add who's working with their name, role (Cashier, Sales Associate
-  or Keyholder), and start and end time (8:00 AM–9:00 PM, 15-minute steps).
-  The day tabs show how many people and hours each day has, "Copy Monday's
-  shifts" fills a day from the one before, and a running list shows each
-  person's hours for the week. They type their own name once and press
+- **Store managers** need no account. On the sign-in page they tap **Store
+  managers**, type their store number (or pick it from a list), and enter the
+  store's 4-digit PIN; their phone remembers it. Then they go **day by day**:
+  for each day, add who's working with their name, role (Cashier, Sales
+  Associate or Keyholder), and start and end time (8:00 AM–9:00 PM, 15-minute
+  steps). The day tabs show how many people and hours each day has, "Copy
+  Monday's shifts" fills a day from the one before, and a running list shows
+  each person's hours for the week. They type their own name once and press
   **Save week**. Next week, **Start from last week** fills it all in.
 - **Upper management** signs in and gets an overview of every store for any
   week: hours by role, total vs last week, who submitted and when, which
   stores haven't submitted, days with nobody on, and who is working today.
   Click through to any store's week, or export to CSV.
-- **Admin**: the managers' link (copy it, or replace it if it leaks), stores,
-  and upper-management logins.
+- **Admin**: stores and their PINs (set, change, or look one up), and
+  upper-management logins.
 
 Next.js 15 on Vercel, Supabase (Postgres) for data and sign-in.
 
@@ -25,8 +26,11 @@ All access rules live in the database (`supabase/migrations/`), not the web
 page, so they hold even against someone calling the API directly:
 
 - The public API key can read and write nothing. Managers' saves go through
-  the web server, which checks the link's secret on every save, then calls one
-  database function that saves the whole week or nothing.
+  the web server, which checks the store PIN cookie on every save, then calls
+  one database function that saves the whole week or nothing.
+- PINs: 5 wrong tries locks a phone out of that store for 15 minutes, and 30
+  wrong tries from anywhere locks the store for an hour. The "remembered"
+  cookie is signed, tied to one store, and stops working when the PIN changes.
 - Only signed-in upper management can read schedules. Nobody can promote
   themselves; there is no public sign-up.
 - Roles are a fixed list, shifts must end after they start, the same person
@@ -72,8 +76,9 @@ after the keys are in place.
 ### 4. First run
 
 1. Admin → add your stores, each with its store number.
-2. Admin → copy the store manager link and send it to your managers.
-3. Managers open it, pick their store, and enter the week.
+2. Admin → give each store a 4-digit PIN and tell that store's manager.
+3. Managers open the site, tap **Store managers**, pick their store, enter the
+   PIN, and fill in the week.
 
 ## Local development
 
@@ -102,6 +107,7 @@ psql -d schedule_test -v ON_ERROR_STOP=1 \
   -f supabase/migrations/20261124000200_link_access.sql \
   -f supabase/migrations/20261124000300_business_hours.sql \
   -f supabase/migrations/20261124000400_save_week_by_shift.sql \
+  -f supabase/migrations/20261124000500_store_pins.sql \
   -f supabase/tests/rls_test.sql
 # → ALL TESTS PASSED
 ```
@@ -115,11 +121,6 @@ project.
 | --- | --- | --- |
 | `NEXT_PUBLIC_WEEK_STARTS_ON` | `0` | `0` Sunday, `1` Monday |
 | `NEXT_PUBLIC_TIMEZONE` | `America/New_York` | What "today" means |
-| `NEXT_PUBLIC_SITE_URL` | production domain | Address used in the managers' link |
-
-The managers' link always uses the production domain (Vercel's
-`VERCEL_PROJECT_PRODUCTION_URL`, which becomes your custom domain once one is
-attached). Vercel's per-deployment addresses ask visitors to log in to
-Vercel, so a link built from one would lock managers out.
+| `NEXT_PUBLIC_SITE_URL` | production domain | Address shown to admins for managers |
 
 Overtime is flagged at more than 40 scheduled hours in the week.

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { friendlyError } from "@/lib/errors";
-import { rotateManagerToken } from "@/lib/managerLink";
+import { setPin } from "@/lib/storeAccess";
 import { requireExecutive } from "@/lib/session";
 import type { Role } from "@/lib/types";
 
@@ -16,12 +16,21 @@ export async function createStore(fd: FormData): Promise<Result> {
   await requireExecutive();
   const name = text(fd, "name");
   if (!name) return { error: "Enter a store name." };
+  const pin = text(fd, "pin");
+  if (pin && !/^\d{4}$/.test(pin)) return { error: "The PIN must be exactly 4 digits." };
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("stores")
-    .insert({ name, code: text(fd, "code").replace(/^#/, "") || null, region: text(fd, "region") || null });
+    .insert({ name, code: text(fd, "code").replace(/^#/, "") || null, region: text(fd, "region") || null })
+    .select("id")
+    .single();
+  if (error) return { error: error.code === "23505" ? "Another store already has that number." : friendlyError(error) };
+  if (pin) {
+    const pinError = await setPin(data.id as string, pin);
+    if (pinError) return { error: pinError };
+  }
   revalidatePath("/admin");
-  return { error: error?.code === "23505" ? "Another store already has that number." : friendlyError(error) };
+  return { error: null };
 }
 
 export async function updateStore(
@@ -76,10 +85,10 @@ export async function setRole(userId: string, role: Role): Promise<Result> {
   return { error: friendlyError(error) };
 }
 
-/** Replace the managers' link. The old one stops working at once. */
-export async function rotateLink(): Promise<Result> {
+/** Set or change a store's 4-digit PIN. Phones that remembered the old one must re-enter it. */
+export async function setStorePin(storeId: string, pin: string): Promise<Result> {
   await requireExecutive();
-  await rotateManagerToken();
+  const error = await setPin(storeId, pin.trim());
   revalidatePath("/admin");
-  return { error: null, message: "New link made. Send it to your managers; the old one no longer works." };
+  return error ? { error } : { error: null, message: "PIN saved." };
 }

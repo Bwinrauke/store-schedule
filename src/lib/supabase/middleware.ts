@@ -2,8 +2,12 @@ import { SUPABASE_PUBLIC_KEY, SUPABASE_URL } from "./env";
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-/** Reachable without signing in. /m/ is the manager link, checked by its own secret. */
-const PUBLIC_PATHS = ["/login", "/auth/callback", "/auth/error", "/m"];
+/**
+ * Reachable without signing in. /stores is for store managers, who prove
+ * access with their store's PIN instead; /m is the retired link, which
+ * redirects there.
+ */
+const PUBLIC_PATHS = ["/login", "/auth/callback", "/auth/error", "/stores", "/m", "/icon.svg", "/apple-icon"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
