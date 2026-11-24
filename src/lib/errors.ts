@@ -1,0 +1,18 @@
+/** Turn a Postgres / PostgREST error into something a store manager can act on. */
+export function friendlyError(error: { code?: string; message: string } | null): string | null {
+  if (!error) return null;
+  switch (error.code) {
+    case "23P01":
+      return "That person is already scheduled during part of that time.";
+    case "23514":
+      return "Check the times: the shift must end after it starts, and breaks are 0–240 minutes.";
+    case "23503":
+      return "That employee isn't on this store's roster.";
+    case "23505":
+      return "That already exists.";
+    case "42501":
+      return "You don't have permission to change this store.";
+    default:
+      return error.message;
+  }
+}
