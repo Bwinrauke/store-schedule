@@ -4,13 +4,24 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ROLES, isStaffRole } from "@/lib/roles";
 import { formatDay, formatHours, formatTime, parseDate, weekDays } from "@/lib/week";
-import { TIME_OPTIONS, buildPayload, cleanName, entryHours, isBlankEntry, type Entry } from "@/lib/week-form";
+import {
+  TIME_OPTIONS,
+  buildPayload,
+  cleanCode,
+  cleanName,
+  entryHours,
+  isBlankEntry,
+  missingFields,
+  type Entry,
+  type EntryField,
+} from "@/lib/week-form";
 import { saveWeek } from "./actions";
 
 const NAME_KEY = "schedule.submittedBy";
 let counter = 0;
 const newKey = () => `new-${Date.now()}-${counter++}`;
-const blankEntry = (day: number): Entry => ({ key: newKey(), day, name: "", role: "", start: "", end: "" });
+const blankEntry = (day: number): Entry => ({ key: newKey(), day, name: "", code: "", role: "", start: "", end: "" });
+const INVALID = "border-red-500 bg-red-50";
 const round = (n: number) => Math.round(n * 100) / 100;
 
 export function WeekForm({
@@ -26,7 +37,7 @@ export function WeekForm({
   week: string;
   initialEntries: Entry[];
   lastWeekEntries: Entry[];
-  roster: { name: string; role: string }[];
+  roster: { name: string; role: string; code: string }[];
   submission: { by: string; at: string } | null;
   today: string;
 }) {
@@ -40,6 +51,8 @@ export function WeekForm({
   const [status, setStatus] = useState<{ error: string | null; message?: string } | null>(null);
   const [pending, start] = useTransition();
   const [focusKey, setFocusKey] = useState<string | null>(null);
+  // After a failed save, outline every missing required field in red.
+  const [showErrors, setShowErrors] = useState(false);
   const tabsRef = useRef<HTMLDivElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
 
@@ -72,12 +85,16 @@ export function WeekForm({
   const total = round(entries.reduce((t, e) => t + entryHours(e), 0));
   const weekIsBlank = entries.every(isBlankEntry);
 
-  // Names to suggest: the store's roster plus anyone typed this week, with their role.
+  // People to suggest: the store's roster plus anyone typed this week, with
+  // their role and VRP code, so picking a name (or typing a code) fills the rest.
   const known = useMemo(() => {
-    const map = new Map<string, { name: string; role: string }>();
-    for (const p of roster) map.set(p.name.toLowerCase(), p);
+    const map = new Map<string, { name: string; role: string; code: string }>();
+    for (const p of roster) map.set(p.name.toLowerCase(), { ...p, code: p.code ?? "" });
     for (const e of entries) {
-      if (cleanName(e.name) && e.role) map.set(cleanName(e.name).toLowerCase(), { name: cleanName(e.name), role: e.role });
+      const name = cleanName(e.name);
+      if (!name) continue;
+      const prev = map.get(name.toLowerCase());
+      map.set(name.toLowerCase(), { name, role: e.role || prev?.role || "", code: cleanCode(e.code) || prev?.code || "" });
     }
     return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [roster, entries]);
@@ -139,6 +156,7 @@ export function WeekForm({
     }
     const check = buildPayload(entries, week);
     if ("error" in check) {
+      setShowErrors(true);
       goToDay(check.day);
       setStatus({ error: check.error });
       return;
@@ -269,73 +287,123 @@ export function WeekForm({
           </div>
         ) : (
           <div className="space-y-2">
-            <div className="hidden grid-cols-[1fr_auto_8.5rem_8.5rem_3.5rem_2.5rem] gap-2 px-1 text-xs font-medium text-gray-500 md:grid">
-              <span>Employee</span>
-              <span>Role</span>
-              <span>Start</span>
-              <span>End</span>
+            <div className="hidden grid-cols-[minmax(9rem,1fr)_6rem_18.75rem_8rem_8rem_3rem_2.75rem] gap-2 px-1 text-xs font-medium text-gray-500 lg:grid">
+              <span>Employee *</span>
+              <span>VRP code *</span>
+              <span>Role *</span>
+              <span>Time in *</span>
+              <span>Time out *</span>
               <span className="text-right">Hours</span>
               <span />
             </div>
-            {dayEntries.map((e) => (
-              <div
-                key={e.key}
-                className="grid grid-cols-[1fr_1fr_auto] items-center gap-2 rounded-lg border border-gray-200 p-2 md:grid-cols-[1fr_auto_8.5rem_8.5rem_3.5rem_2.5rem] md:border-0 md:p-0"
-              >
-                <input
-                  className="input order-1 col-span-2 md:col-span-1"
-                  list="known-names"
-                  placeholder="Employee name"
-                  aria-label="Employee name"
-                  autoComplete="off"
-                  autoCapitalize="words"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  enterKeyHint="next"
-                  autoFocus={e.key === focusKey}
-                  value={e.name}
-                  onChange={(ev) => {
-                    const name = ev.target.value;
-                    const match = known.find((p) => p.name.toLowerCase() === cleanName(name).toLowerCase());
-                    update(e.key, { name, role: !e.role && match && isStaffRole(match.role) ? match.role : e.role });
-                  }}
-                />
+            {dayEntries.map((e) => {
+              const missing = showErrors ? missingFields(e) : [];
+              const bad = (f: EntryField) => (missing.includes(f) ? INVALID : "");
+              return (
                 <div
-                  className="order-3 col-span-3 flex overflow-hidden rounded-lg border border-gray-300 md:order-2 md:col-span-1"
-                  role="radiogroup"
-                  aria-label="Role"
+                  key={e.key}
+                  className="grid grid-cols-6 items-center gap-2 rounded-lg border border-gray-200 p-2 lg:grid-cols-[minmax(9rem,1fr)_6rem_18.75rem_8rem_8rem_3rem_2.75rem] lg:border-0 lg:p-0"
                 >
-                  {ROLES.map((role) => (
-                    <button
-                      key={role}
-                      type="button"
-                      role="radio"
-                      aria-checked={e.role === role}
-                      onClick={() => update(e.key, { role })}
-                      className={`min-h-10 flex-1 border-l border-gray-300 px-2 text-sm whitespace-nowrap first:border-l-0 md:flex-none md:px-3 ${
-                        e.role === role ? "bg-brand-500 font-medium text-white" : "bg-white text-gray-700 hover:bg-gray-50"
-                      }`}
-                    >
-                      {role}
-                    </button>
-                  ))}
+                  <input
+                    className={`input order-1 col-span-3 lg:col-span-1 ${bad("name")}`}
+                    list="known-names"
+                    placeholder="Name *"
+                    aria-label="Employee name"
+                    aria-required="true"
+                    aria-invalid={missing.includes("name")}
+                    autoComplete="off"
+                    autoCapitalize="words"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    enterKeyHint="next"
+                    autoFocus={e.key === focusKey}
+                    value={e.name}
+                    onChange={(ev) => {
+                      const name = ev.target.value;
+                      const match = known.find((p) => p.name.toLowerCase() === cleanName(name).toLowerCase());
+                      update(e.key, {
+                        name,
+                        role: !e.role && match && isStaffRole(match.role) ? match.role : e.role,
+                        code: !e.code && match?.code ? match.code : e.code,
+                      });
+                    }}
+                  />
+                  <input
+                    className={`input order-2 col-span-2 uppercase placeholder:normal-case lg:col-span-1 ${bad("code")}`}
+                    placeholder="VRP *"
+                    aria-label="VRP user code"
+                    aria-required="true"
+                    aria-invalid={missing.includes("code")}
+                    autoComplete="off"
+                    autoCapitalize="characters"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    enterKeyHint="next"
+                    maxLength={20}
+                    value={e.code}
+                    onChange={(ev) => {
+                      const code = ev.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 20);
+                      const match = !cleanName(e.name) ? known.find((p) => p.code && p.code === code) : undefined;
+                      update(e.key, {
+                        code,
+                        name: match ? match.name : e.name,
+                        role: match && !e.role && isStaffRole(match.role) ? match.role : e.role,
+                      });
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-danger order-3 col-span-1 min-w-11 justify-self-end px-2 lg:order-7"
+                    aria-label={`Remove ${e.name || "this shift"}`}
+                    onClick={() => changed(entries.filter((x) => x.key !== e.key))}
+                  >
+                    ✕
+                  </button>
+                  <div
+                    className={`order-4 col-span-6 flex overflow-hidden rounded-lg border lg:order-3 lg:col-span-1 ${
+                      missing.includes("role") ? "border-red-500" : "border-gray-300"
+                    }`}
+                    role="radiogroup"
+                    aria-label="Role"
+                    aria-required="true"
+                  >
+                    {ROLES.map((role) => (
+                      <button
+                        key={role}
+                        type="button"
+                        role="radio"
+                        aria-checked={e.role === role}
+                        onClick={() => update(e.key, { role })}
+                        className={`min-h-10 flex-1 border-l border-gray-300 px-2 text-sm whitespace-nowrap first:border-l-0 lg:flex-none lg:px-3 ${
+                          e.role === role
+                            ? "bg-brand-500 font-medium text-white"
+                            : `${missing.includes("role") ? "bg-red-50" : "bg-white"} text-gray-700 hover:bg-gray-50`
+                        }`}
+                      >
+                        {role}
+                      </button>
+                    ))}
+                  </div>
+                  <TimeSelect
+                    label="Time in *"
+                    className={`order-5 col-span-3 lg:order-4 lg:col-span-1 ${bad("start")}`}
+                    invalid={missing.includes("start")}
+                    value={e.start}
+                    onChange={(v) => update(e.key, { start: v })}
+                  />
+                  <TimeSelect
+                    label="Time out *"
+                    className={`order-6 col-span-3 lg:order-5 lg:col-span-1 ${bad("end")}`}
+                    invalid={missing.includes("end")}
+                    value={e.end}
+                    onChange={(v) => update(e.key, { end: v })}
+                  />
+                  <div className="order-7 hidden text-right text-sm font-semibold text-gray-900 tabular lg:order-6 lg:block">
+                    {formatHours(round(entryHours(e)))}
+                  </div>
                 </div>
-                <TimeSelect label="Start" className="order-4 md:order-3" value={e.start} onChange={(v) => update(e.key, { start: v })} />
-                <TimeSelect label="End" className="order-5 md:order-4" value={e.end} onChange={(v) => update(e.key, { end: v })} />
-                <div className="order-6 min-w-11 text-right text-sm font-semibold text-gray-900 tabular md:order-5">
-                  {formatHours(round(entryHours(e)))}
-                  <span className="font-normal text-gray-500 md:hidden"> h</span>
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-danger order-2 min-w-11 justify-self-end px-2 md:order-6"
-                  aria-label={`Remove ${e.name || "this shift"}`}
-                  onClick={() => changed(entries.filter((x) => x.key !== e.key))}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
+              );
+            })}
             <button className="btn w-full border-dashed" onClick={addPerson}>
               + Add person to {dow}
             </button>
@@ -396,14 +464,23 @@ function TimeSelect({
   value,
   onChange,
   className = "",
+  invalid = false,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   className?: string;
+  invalid?: boolean;
 }) {
   return (
-    <select aria-label={label} className={`input min-w-0 ${className}`} value={value} onChange={(e) => onChange(e.target.value)}>
+    <select
+      aria-label={label.replace(" *", "")}
+      aria-required="true"
+      aria-invalid={invalid}
+      className={`input min-w-0 ${className}`}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
       <option value="">{label}</option>
       {TIME_OPTIONS.map((t) => (
         <option key={t} value={t}>

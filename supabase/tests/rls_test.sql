@@ -15,9 +15,9 @@ insert into public.store_pins (store_id, pin) values ('10000000-0000-0000-0000-0
 set role service_role;
 do $$ begin
   assert public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'Maria',
-    '[{"name":"Ann  Lee","role":"Cashier","date":"2026-11-22","start":"09:00","end":"17:00"},
-      {"name":"Ann Lee","role":"Keyholder","date":"2026-11-23","start":"12:00","end":"16:30"},
-      {"name":"Bob","role":"Keyholder","date":"2026-11-22","start":"13:00","end":"21:00"}]') = 3, 'saved 3 shifts';
+    '[{"name":"Ann  Lee","code":"101","role":"Cashier","date":"2026-11-22","start":"09:00","end":"17:00"},
+      {"name":"Ann Lee","code":"101","role":"Keyholder","date":"2026-11-23","start":"12:00","end":"16:30"},
+      {"name":"Bob","code":"102","role":"Keyholder","date":"2026-11-22","start":"13:00","end":"21:00"}]') = 3, 'saved 3 shifts';
   assert (select count(*) from public.employees) = 2, 'Ann reused across days';
   assert (select full_name from public.employees where lower(full_name) = 'ann lee') = 'Ann Lee', 'name whitespace normalised';
   assert (select role from public.shifts where shift_date = '2026-11-22' and start_time = '09:00') = 'Cashier', 'role kept per shift';
@@ -26,8 +26,8 @@ do $$ begin
 
   -- A split shift on the same day is fine as long as it doesn't overlap.
   assert public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'Maria',
-    '[{"name":"ann lee","role":"Sales Associate","date":"2026-11-24","start":"08:00","end":"12:00"},
-      {"name":"Ann Lee","role":"Sales Associate","date":"2026-11-24","start":"13:00","end":"17:00"}]') = 2, 'resubmit with split shift';
+    '[{"name":"ann lee","code":"101","role":"Sales Associate","date":"2026-11-24","start":"08:00","end":"12:00"},
+      {"name":"Ann Lee","code":"101","role":"Sales Associate","date":"2026-11-24","start":"13:00","end":"17:00"}]') = 2, 'resubmit with split shift';
   assert (select count(*) from public.shifts) = 2, 'old shifts replaced';
   assert (select count(*) from public.employees) = 2, 'no duplicate employee';
   assert (select actor_name from public.audit_log order by id desc limit 1) = 'Maria', 'audit records submitter';
@@ -36,10 +36,10 @@ end $$;
 do $$
 declare
   bad text[] := array[
-    '[{"name":"Zed","role":"Manager","date":"2026-11-22","start":"09:00","end":"17:00"}]',
-    '[{"name":"Ann Lee","role":"Cashier","date":"2026-11-22","start":"07:45","end":"12:00"}]',
-    '[{"name":"Ann Lee","role":"Cashier","date":"2026-11-22","start":"13:00","end":"21:15"}]',
-    '[{"name":"Ann Lee","role":"Cashier","date":"2026-11-22","start":"09:10","end":"12:00"}]'];
+    '[{"name":"Zed","code":"103","role":"Manager","date":"2026-11-22","start":"09:00","end":"17:00"}]',
+    '[{"name":"Ann Lee","code":"101","role":"Cashier","date":"2026-11-22","start":"07:45","end":"12:00"}]',
+    '[{"name":"Ann Lee","code":"101","role":"Cashier","date":"2026-11-22","start":"13:00","end":"21:15"}]',
+    '[{"name":"Ann Lee","code":"101","role":"Cashier","date":"2026-11-22","start":"09:10","end":"12:00"}]'];
   b text;
 begin
   foreach b in array bad loop
@@ -50,11 +50,11 @@ begin
 
   -- Friendly errors raised by save_week itself.
   bad := array[
-    '[{"name":"Ann Lee","role":"Cashier","date":"2026-11-22","start":"09:00","end":"13:00"},
-      {"name":"ANN LEE","role":"Cashier","date":"2026-11-22","start":"12:00","end":"16:00"}]',
-    '[{"name":"Ann Lee","role":"Cashier","date":"2026-12-05","start":"09:00","end":"17:00"}]',
-    '[{"name":"Ann Lee","role":"Cashier","date":"2026-11-22","start":"17:00","end":"09:00"}]',
-    '[{"name":"  ","role":"Cashier","date":"2026-11-22","start":"09:00","end":"17:00"}]'];
+    '[{"name":"Ann Lee","code":"101","role":"Cashier","date":"2026-11-22","start":"09:00","end":"13:00"},
+      {"name":"ANN LEE","code":"101","role":"Cashier","date":"2026-11-22","start":"12:00","end":"16:00"}]',
+    '[{"name":"Ann Lee","code":"101","role":"Cashier","date":"2026-12-05","start":"09:00","end":"17:00"}]',
+    '[{"name":"Ann Lee","code":"101","role":"Cashier","date":"2026-11-22","start":"17:00","end":"09:00"}]',
+    '[{"name":"  ","code":"999","role":"Cashier","date":"2026-11-22","start":"09:00","end":"17:00"}]'];
   foreach b in array bad loop
     begin perform public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'M', b::jsonb);
       raise exception 'FAIL: accepted %', b;
@@ -68,11 +68,45 @@ begin
   assert (select count(*) from public.shifts) = 2, 'failed saves roll back';
 end $$;
 
+-- VRP codes: required, one per person, not shared, stored upper-case.
+do $$
+declare
+  bad text[] := array[
+    '[{"name":"Ann Lee","role":"Cashier","date":"2026-11-22","start":"09:00","end":"13:00"}]',
+    '[{"name":"Ann Lee","code":"  ","role":"Cashier","date":"2026-11-22","start":"09:00","end":"13:00"}]',
+    '[{"name":"Ann Lee","code":"555","role":"Cashier","date":"2026-11-22","start":"09:00","end":"13:00"},
+      {"name":"Bob","code":"555","role":"Cashier","date":"2026-11-23","start":"09:00","end":"13:00"}]',
+    '[{"name":"Ann Lee","code":"101","role":"Cashier","date":"2026-11-22","start":"09:00","end":"13:00"},
+      {"name":"ann  lee","code":"777","role":"Cashier","date":"2026-11-23","start":"09:00","end":"13:00"}]',
+    '[{"name":"Ann Lee","code":"101","role":"Cashier","date":"2026-11-22","start":"","end":"13:00"}]'];
+  b text;
+begin
+  set local role service_role;
+  foreach b in array bad loop
+    begin perform public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'M', b::jsonb);
+      raise exception 'FAIL: accepted %', b;
+    exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
+  end loop;
+  begin perform public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'M',
+      '[{"name":"Ann Lee","code":"12-34","role":"Cashier","date":"2026-11-22","start":"09:00","end":"13:00"}]');
+    raise exception 'FAIL: bad code format accepted';
+  exception when check_violation then null; end;
+  -- Same code typed in either case is the same code; it's saved upper-case.
+  perform public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'M',
+    '[{"name":"Ann Lee","code":"ab12","role":"Cashier","date":"2026-11-22","start":"09:00","end":"13:00"},
+      {"name":"ann lee","code":"AB12","role":"Cashier","date":"2026-11-23","start":"09:00","end":"13:00"}]');
+  assert (select vrp_code from public.employees where lower(full_name) = 'ann lee') = 'AB12', 'code stored upper-case';
+  assert (select vrp_code from public.shift_details limit 1) = 'AB12', 'view shows code';
+  raise exception 'ROLLBACK_OK';
+exception when raise_exception then
+  if sqlerrm <> 'ROLLBACK_OK' then raise; end if;
+end $$;
+
 -- Overlap message names the person and the day.
 do $$ begin
   perform public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'M',
-    '[{"name":"Ann Lee","role":"Cashier","date":"2026-11-23","start":"09:00","end":"13:00"},
-      {"name":"Ann Lee","role":"Cashier","date":"2026-11-23","start":"12:00","end":"16:00"}]');
+    '[{"name":"Ann Lee","code":"101","role":"Cashier","date":"2026-11-23","start":"09:00","end":"13:00"},
+      {"name":"Ann Lee","code":"101","role":"Cashier","date":"2026-11-23","start":"12:00","end":"16:00"}]');
   raise exception 'FAIL: overlap accepted';
 exception when raise_exception then
   assert sqlerrm = 'Ann Lee is scheduled twice at overlapping times on Monday, Nov 23.', sqlerrm;

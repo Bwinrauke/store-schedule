@@ -16,7 +16,7 @@ export const metadata = { title: "Weekly Schedule", robots: { index: false, foll
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type ShiftWithName = Shift & { employees: { full_name: string } | null };
+type ShiftWithName = Shift & { employees: { full_name: string; vrp_code: string | null } | null };
 
 function toEntries(shifts: ShiftWithName[], week: string): Entry[] {
   return shifts
@@ -24,6 +24,7 @@ function toEntries(shifts: ShiftWithName[], week: string): Entry[] {
       key: s.id,
       day: Math.round((Date.parse(s.shift_date) - Date.parse(week)) / 86_400_000),
       name: s.employees?.full_name ?? "",
+      code: s.employees?.vrp_code ?? "",
       role: isStaffRole(s.role) ? s.role : ("" as const),
       start: s.start_time.slice(0, 5),
       end: s.end_time.slice(0, 5),
@@ -76,11 +77,11 @@ export default async function StoreWeekPage({
   }
 
   const week = resolveWeek((await searchParams).week);
-  const shiftCols = "id, store_id, employee_id, shift_date, start_time, end_time, break_minutes, role, note, employees(full_name)";
+  const shiftCols = "id, store_id, employee_id, shift_date, start_time, end_time, break_minutes, role, note, employees(full_name, vrp_code)";
   const [{ data: thisWeek }, { data: lastWeek }, { data: roster }, { data: submission }] = await Promise.all([
     db.from("shifts").select(shiftCols).eq("store_id", store.id).gte("shift_date", week).lte("shift_date", addDays(week, 6)),
     db.from("shifts").select(shiftCols).eq("store_id", store.id).gte("shift_date", addDays(week, -7)).lte("shift_date", addDays(week, -1)),
-    db.from("employees").select("full_name, role").eq("store_id", store.id).eq("active", true).order("full_name"),
+    db.from("employees").select("full_name, role, vrp_code").eq("store_id", store.id).eq("active", true).order("full_name"),
     db.from("week_submissions").select("submitted_by, submitted_at").eq("store_id", store.id).eq("week_start", week).maybeSingle(),
   ]);
 
@@ -101,7 +102,7 @@ export default async function StoreWeekPage({
           week={week}
           initialEntries={toEntries((thisWeek ?? []) as unknown as ShiftWithName[], week)}
           lastWeekEntries={toEntries((lastWeek ?? []) as unknown as ShiftWithName[], addDays(week, -7))}
-          roster={(roster ?? []).map((r) => ({ name: r.full_name as string, role: r.role as string }))}
+          roster={(roster ?? []).map((r) => ({ name: r.full_name as string, role: r.role as string, code: (r.vrp_code as string | null) ?? "" }))}
           submission={submission ? { by: submission.submitted_by as string, at: submission.submitted_at as string } : null}
           today={todayIso()}
         />

@@ -7,6 +7,7 @@ export type Employee = {
   store_id: string;
   full_name: string;
   role: string;
+  vrp_code?: string | null;
   active: boolean;
 };
 export type Shift = {

@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   const supabase = await createClient();
   let query = supabase
     .from("shift_details")
-    .select("store_code, store_name, employee_name, role, shift_date, start_time, end_time, hours")
+    .select("store_code, store_name, employee_name, vrp_code, role, shift_date, start_time, end_time, hours")
     .gte("shift_date", week)
     .lte("shift_date", addDays(week, 6))
     .order("store_name")
@@ -31,11 +31,11 @@ export async function GET(request: NextRequest) {
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-  const header = ["Store #", "Store", "Employee", "Role", "Date", "Start", "End", "Hours"];
+  const header = ["Store #", "Store", "Employee", "VRP code", "Role", "Date", "Start", "End", "Hours"];
   const lines = [header.map(csvCell).join(",")];
   for (const r of data ?? []) {
     lines.push(
-      [r.store_code, r.store_name, r.employee_name, r.role, r.shift_date, r.start_time.slice(0, 5), r.end_time.slice(0, 5), r.hours]
+      [r.store_code, r.store_name, r.employee_name, r.vrp_code, r.role, r.shift_date, r.start_time.slice(0, 5), r.end_time.slice(0, 5), r.hours]
         .map(csvCell)
         .join(","),
     );

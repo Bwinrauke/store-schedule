@@ -5,9 +5,10 @@ Weekly employee schedules for every store, in one place.
 - **Store managers** need no account. On the sign-in page they tap **Store
   managers**, pick their store from the dropdown, and enter the
   store's 4-digit PIN; their phone remembers it. Then they go **day by day**:
-  for each day, add who's working with their name, role (Cashier, Sales
-  Associate or Keyholder), and start and end time (8:00 AM–9:00 PM, 15-minute
-  steps). The day tabs show how many people and hours each day has, "Copy
+  for each day, add who's working with their name, **VRP user code**, role
+  (Cashier, Sales Associate or Keyholder), and **time in** and **time out**
+  (8:00 AM–9:00 PM, 15-minute steps). All five are required; picking a known
+  name fills in their code and role. The day tabs show how many people and hours each day has, "Copy
   Monday's shifts" fills a day from the one before, and a running list shows
   each person's hours for the week. They type their own name once and press
   **Save week**. Next week, **Start from last week** fills it all in.
@@ -108,6 +109,7 @@ psql -d schedule_test -v ON_ERROR_STOP=1 \
   -f supabase/migrations/20261124000300_business_hours.sql \
   -f supabase/migrations/20261124000400_save_week_by_shift.sql \
   -f supabase/migrations/20261124000500_store_pins.sql \
+  -f supabase/migrations/20261124000600_vrp_code.sql \
   -f supabase/tests/rls_test.sql
 # → ALL TESTS PASSED
 ```

@@ -26,7 +26,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
   const [{ data: shifts }, { data: submission }] = await Promise.all([
     supabase
       .from("shifts")
-      .select("id, store_id, employee_id, shift_date, start_time, end_time, break_minutes, role, note, employees(id, store_id, full_name, role, active)")
+      .select("id, store_id, employee_id, shift_date, start_time, end_time, break_minutes, role, note, employees(id, store_id, full_name, role, vrp_code, active)")
       .eq("store_id", store.id)
       .gte("shift_date", week)
       .lte("shift_date", addDays(week, 6))

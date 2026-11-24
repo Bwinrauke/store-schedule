@@ -5,7 +5,7 @@ export function friendlyError(error: { code?: string; message: string } | null):
     case "23P01":
       return "That person is already scheduled during part of that time.";
     case "23514":
-      return "Check the times: each shift must end after it starts.";
+      return "Check the times and VRP codes: each shift must end after it starts, and codes are letters and numbers only.";
     case "23505":
       return "That already exists.";
     case "42501":
