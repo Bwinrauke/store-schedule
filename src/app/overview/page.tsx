@@ -46,7 +46,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
         <a className="btn" href={`/api/export?week=${week}`}>Export all (CSV)</a>
       </WeekToolbar>
 
-      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-5">
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-5">
         <Kpi label="Total hours" value={h(sumOf("total_hours"))} />
         <Kpi label="Cashier" value={h(sumOf("cashier_hours"))} />
         <Kpi label="Sales Associate" value={h(sumOf("sales_hours"))} />
@@ -54,7 +54,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
         <Kpi label="Not submitted" value={`${missing.length} of ${rows.length}`} tone={missing.length ? "bad" : "ok"} />
       </div>
 
-      <div className="card mb-6 overflow-x-auto">
+      <div className="card mb-6 hidden overflow-x-auto md:block">
         <table className="w-full min-w-[860px] text-sm">
           <thead className="bg-gray-50 text-left text-gray-600">
             <tr>
@@ -120,6 +120,53 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* Phones: one card per store instead of a wide table. */}
+      <div className="mb-6 space-y-3 md:hidden">
+        {rows.length === 0 && <div className="card p-6 text-center text-sm text-gray-500">No stores yet. Add them in Admin.</div>}
+        {rows.map((r) => {
+          const delta = Math.round((n(r.total_hours) - (priorHours.get(r.store_id) ?? 0)) * 100) / 100;
+          const covered = n(r.days_covered);
+          return (
+            <Link key={r.store_id} href={`/schedule?store=${r.store_id}&week=${week}`} className="card block p-4 active:bg-gray-50">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold">{r.store_code ? `#${r.store_code} · ` : ""}{r.store_name}</div>
+                  <div className="mt-0.5 text-sm">
+                    {r.submitted_by ? (
+                      <span className="text-gray-600">
+                        {r.submitted_by} ·{" "}
+                        {new Date(r.submitted_at!).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                      </span>
+                    ) : (
+                      <span className="font-medium text-red-700">Not submitted</span>
+                    )}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xl font-semibold tabular">{h(r.total_hours)}h</div>
+                  <div className={`text-xs tabular ${delta > 0 ? "text-amber-700" : delta < 0 ? "text-emerald-700" : "text-gray-400"}`}>
+                    {delta === 0 ? "same as last wk" : `${delta > 0 ? "+" : ""}${formatHours(delta)} vs last wk`}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                <div className="rounded-md bg-gray-50 py-1.5"><div className="text-gray-500">Cashier</div><div className="font-semibold tabular">{h(r.cashier_hours)}</div></div>
+                <div className="rounded-md bg-gray-50 py-1.5"><div className="text-gray-500">Sales</div><div className="font-semibold tabular">{h(r.sales_hours)}</div></div>
+                <div className="rounded-md bg-gray-50 py-1.5"><div className="text-gray-500">Keyholder</div><div className="font-semibold tabular">{h(r.keyholder_hours)}</div></div>
+              </div>
+              <div className="mt-2 flex justify-between text-xs text-gray-600">
+                <span>{r.people_scheduled} people</span>
+                {n(r.shift_count) > 0 && (
+                  <span className={covered < 7 ? "font-medium text-amber-800" : "text-emerald-700"}>
+                    {covered < 7 ? `${7 - covered} day${7 - covered === 1 ? "" : "s"} empty` : "All 7 days covered"}
+                  </span>
+                )}
+              </div>
+            </Link>
+          );
+        })}
       </div>
 
       {isThisWeek && (

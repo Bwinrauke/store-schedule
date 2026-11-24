@@ -3,6 +3,7 @@ import { Shell } from "@/components/Shell";
 import { createClient } from "@/lib/supabase/server";
 import { getManagerToken } from "@/lib/managerLink";
 import { requireExecutive } from "@/lib/session";
+import { isDeploymentOnlyHost, siteUrl } from "@/lib/siteUrl";
 import type { Profile, Store } from "@/lib/types";
 import { ManagerLinkPanel } from "./ManagerLinkPanel";
 import { StoresPanel } from "./StoresPanel";
@@ -18,14 +19,14 @@ export default async function AdminPage() {
     headers(),
   ]);
   const host = h.get("x-forwarded-host") ?? h.get("host");
-  const proto = h.get("x-forwarded-proto") ?? (host?.startsWith("localhost") ? "http" : "https");
-  const link = token && host ? `${proto}://${host}/m/${token}` : null;
+  const base = siteUrl(host, h.get("x-forwarded-proto"));
+  const link = token && base ? `${base}/m/${token}` : null;
 
   return (
     <Shell>
       <h1 className="mb-4 text-xl font-semibold">Admin</h1>
       <div className="grid gap-8">
-        <ManagerLinkPanel link={link} />
+        <ManagerLinkPanel link={link} onPreviewAddress={isDeploymentOnlyHost(host)} />
         <StoresPanel stores={(stores ?? []) as Store[]} />
         <UsersPanel meId={me.id} profiles={(profiles ?? []) as Profile[]} />
       </div>

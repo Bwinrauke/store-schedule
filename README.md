@@ -115,5 +115,11 @@ project.
 | --- | --- | --- |
 | `NEXT_PUBLIC_WEEK_STARTS_ON` | `0` | `0` Sunday, `1` Monday |
 | `NEXT_PUBLIC_TIMEZONE` | `America/New_York` | What "today" means |
+| `NEXT_PUBLIC_SITE_URL` | production domain | Address used in the managers' link |
+
+The managers' link always uses the production domain (Vercel's
+`VERCEL_PROJECT_PRODUCTION_URL`, which becomes your custom domain once one is
+attached). Vercel's per-deployment addresses ask visitors to log in to
+Vercel, so a link built from one would lock managers out.
 
 Overtime is flagged at more than 40 scheduled hours in the week.

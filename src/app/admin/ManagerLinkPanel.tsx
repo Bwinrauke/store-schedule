@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { rotateLink } from "./actions";
 
-export function ManagerLinkPanel({ link }: { link: string | null }) {
+export function ManagerLinkPanel({ link, onPreviewAddress }: { link: string | null; onPreviewAddress: boolean }) {
   const [copied, setCopied] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -16,6 +16,12 @@ export function ManagerLinkPanel({ link }: { link: string | null }) {
           Managers don&apos;t need an account. Send them this link; they pick their store and enter the week.
           Anyone with the link can edit schedules, so share it only with managers.
         </p>
+        {onPreviewAddress && (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            You&apos;re on a Vercel preview address, which asks visitors to log in to Vercel. The link below uses
+            your main address instead, so managers won&apos;t see that.
+          </p>
+        )}
         {link ? (
           <div className="flex flex-wrap gap-2">
             <input className="input flex-1 font-mono text-xs" readOnly value={link} aria-label="Manager link" onFocus={(e) => e.target.select()} />

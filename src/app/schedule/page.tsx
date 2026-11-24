@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getMyStores, requireExecutive } from "@/lib/session";
 import type { Employee, Shift } from "@/lib/types";
 import { addDays, resolveWeek } from "@/lib/week";
-import { ScheduleGrid } from "./ScheduleGrid";
+import { ScheduleDayList, ScheduleGrid } from "./ScheduleGrid";
 import { PrintButton } from "./PrintButton";
 
 export default async function SchedulePage({ searchParams }: { searchParams: Promise<{ store?: string; week?: string }> }) {
@@ -59,7 +59,14 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
       {employees.length === 0 ? (
         <div className="card p-8 text-center text-sm text-gray-500">Nothing scheduled for this store this week.</div>
       ) : (
-        <ScheduleGrid week={week} employees={employees} shifts={rows} />
+        <>
+          <div className="hidden md:block print:block">
+            <ScheduleGrid week={week} employees={employees} shifts={rows} />
+          </div>
+          <div className="md:hidden print:hidden">
+            <ScheduleDayList week={week} shifts={rows} />
+          </div>
+        </>
       )}
     </Shell>
   );

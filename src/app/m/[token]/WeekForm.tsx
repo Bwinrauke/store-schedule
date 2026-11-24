@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ROLES, isStaffRole } from "@/lib/roles";
 import { formatDay, formatHours, formatTime, parseDate, weekDays } from "@/lib/week";
@@ -41,6 +41,9 @@ export function WeekForm({
   const [yourName, setYourName] = useState("");
   const [status, setStatus] = useState<{ error: string | null; message?: string } | null>(null);
   const [pending, start] = useTransition();
+  const [focusKey, setFocusKey] = useState<string | null>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     try {
@@ -105,6 +108,20 @@ export function WeekForm({
   const prevDow = day > 0 ? formatDay(dates[day - 1]).dow : null;
   const nextDow = day < 6 ? formatDay(dates[day + 1]).dow : null;
 
+  function addPerson() {
+    const entry = blankEntry(day);
+    setFocusKey(entry.key);
+    changed([...entries, entry]);
+  }
+
+  // Switch day and bring its top into view (matters on phones, where the
+  // Next button sits below the day's list).
+  function goToDay(d: number) {
+    setDay(d);
+    const top = tabsRef.current?.getBoundingClientRect().top;
+    if (top !== undefined && top < 0) tabsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   function copyFrom(fromDay: number) {
     const copies = forDay(fromDay)
       .filter((e) => !isBlankEntry(e))
@@ -116,9 +133,15 @@ export function WeekForm({
     try {
       localStorage.setItem(NAME_KEY, yourName.trim());
     } catch {}
+    if (!yourName.trim()) {
+      setStatus({ error: "Enter your name at the top, then save." });
+      nameRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      nameRef.current?.focus({ preventScroll: true });
+      return;
+    }
     const check = buildPayload(entries, week);
     if ("error" in check) {
-      setDay(check.day);
+      goToDay(check.day);
       setStatus({ error: check.error });
       return;
     }
@@ -133,7 +156,27 @@ export function WeekForm({
   }
 
   return (
-    <div className="space-y-4 pb-28">
+    <div className="space-y-4 pb-32">
+      <div className="card flex flex-wrap items-center gap-x-3 gap-y-2 p-3">
+        <label htmlFor="your-name" className="text-sm font-medium text-gray-700">
+          Your name
+        </label>
+        <input
+          id="your-name"
+          ref={nameRef}
+          className="input min-w-0 flex-1 sm:max-w-xs"
+          placeholder="First and last name"
+          autoComplete="name"
+          autoCapitalize="words"
+          enterKeyHint="done"
+          value={yourName}
+          onChange={(e) => {
+            setYourName(e.target.value);
+            setStatus(null);
+          }}
+        />
+      </div>
+
       {submission && !dirty && (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
           Submitted by {submission.by} on{" "}
@@ -158,7 +201,12 @@ export function WeekForm({
       )}
 
       {/* Day tabs */}
-      <div className="grid grid-cols-7 gap-1 sm:gap-2" role="tablist" aria-label="Day">
+      <div
+        ref={tabsRef}
+        className="sticky top-0 z-20 -mx-4 grid scroll-mt-0 grid-cols-7 gap-1 bg-[#f6f7f9]/95 px-4 py-2 backdrop-blur sm:mx-0 sm:gap-2 sm:px-0"
+        role="tablist"
+        aria-label="Day"
+      >
         {dates.map((d, i) => {
           const f = formatDay(d);
           const people = dayPeople(i);
@@ -168,7 +216,7 @@ export function WeekForm({
               key={d}
               role="tab"
               aria-selected={selected}
-              onClick={() => setDay(i)}
+              onClick={() => goToDay(i)}
               className={`rounded-lg border px-1 py-2 text-center ${
                 selected ? "border-brand-500 bg-brand-500 text-white" : "border-gray-200 bg-white hover:border-gray-300"
               }`}
@@ -211,7 +259,7 @@ export function WeekForm({
           <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center">
             <p className="text-sm text-gray-500">No one scheduled on {dow} yet.</p>
             <div className="mt-3 flex flex-wrap justify-center gap-2">
-              <button className="btn btn-primary" onClick={() => changed([...entries, blankEntry(day)])}>
+              <button className="btn btn-primary" onClick={addPerson}>
                 + Add person
               </button>
               {prevDow && forDay(day - 1).some((e) => !isBlankEntry(e)) && (
@@ -234,14 +282,19 @@ export function WeekForm({
             {dayEntries.map((e) => (
               <div
                 key={e.key}
-                className="grid grid-cols-2 gap-2 rounded-lg border border-gray-200 p-2 md:grid-cols-[1fr_auto_8.5rem_8.5rem_3.5rem_2.5rem] md:items-center md:border-0 md:p-0"
+                className="grid grid-cols-[1fr_1fr_auto] items-center gap-2 rounded-lg border border-gray-200 p-2 md:grid-cols-[1fr_auto_8.5rem_8.5rem_3.5rem_2.5rem] md:border-0 md:p-0"
               >
                 <input
-                  className="input col-span-2 md:col-span-1"
+                  className="input order-1 col-span-2 md:col-span-1"
                   list="known-names"
                   placeholder="Employee name"
                   aria-label="Employee name"
                   autoComplete="off"
+                  autoCapitalize="words"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  enterKeyHint="next"
+                  autoFocus={e.key === focusKey}
                   value={e.name}
                   onChange={(ev) => {
                     const name = ev.target.value;
@@ -250,7 +303,7 @@ export function WeekForm({
                   }}
                 />
                 <div
-                  className="col-span-2 flex overflow-hidden rounded-lg border border-gray-300 md:col-span-1"
+                  className="order-3 col-span-3 flex overflow-hidden rounded-lg border border-gray-300 md:order-2 md:col-span-1"
                   role="radiogroup"
                   aria-label="Role"
                 >
@@ -269,15 +322,15 @@ export function WeekForm({
                     </button>
                   ))}
                 </div>
-                <TimeSelect label="Start" value={e.start} onChange={(v) => update(e.key, { start: v })} />
-                <TimeSelect label="End" value={e.end} onChange={(v) => update(e.key, { end: v })} />
-                <div className="flex items-center text-sm text-gray-600 md:justify-end">
-                  <span className="mr-1 md:hidden">Hours:</span>
-                  <b className="tabular text-gray-900">{formatHours(round(entryHours(e)))}</b>
+                <TimeSelect label="Start" className="order-4 md:order-3" value={e.start} onChange={(v) => update(e.key, { start: v })} />
+                <TimeSelect label="End" className="order-5 md:order-4" value={e.end} onChange={(v) => update(e.key, { end: v })} />
+                <div className="order-6 min-w-11 text-right text-sm font-semibold text-gray-900 tabular md:order-5">
+                  {formatHours(round(entryHours(e)))}
+                  <span className="font-normal text-gray-500 md:hidden"> h</span>
                 </div>
                 <button
                   type="button"
-                  className="btn btn-danger justify-self-end px-2"
+                  className="btn btn-danger order-2 min-w-11 justify-self-end px-2 md:order-6"
                   aria-label={`Remove ${e.name || "this shift"}`}
                   onClick={() => changed(entries.filter((x) => x.key !== e.key))}
                 >
@@ -285,17 +338,17 @@ export function WeekForm({
                 </button>
               </div>
             ))}
-            <button className="btn w-full border-dashed" onClick={() => changed([...entries, blankEntry(day)])}>
+            <button className="btn w-full border-dashed" onClick={addPerson}>
               + Add person to {dow}
             </button>
           </div>
         )}
 
         <div className="mt-4 flex justify-between gap-2 border-t border-gray-100 pt-3">
-          <button className="btn" disabled={day === 0} onClick={() => setDay(day - 1)}>
+          <button className="btn" disabled={day === 0} onClick={() => goToDay(day - 1)}>
             ← {prevDow ?? "Prev"}
           </button>
-          <button className="btn btn-primary" disabled={day === 6} onClick={() => setDay(day + 1)}>
+          <button className="btn btn-primary" disabled={day === 6} onClick={() => goToDay(day + 1)}>
             Next: {nextDow ?? "—"} →
           </button>
         </div>
@@ -317,24 +370,21 @@ export function WeekForm({
         </section>
       )}
 
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3">
-          <input
-            className="input w-full sm:w-56"
-            placeholder="Your name"
-            aria-label="Your name"
-            value={yourName}
-            onChange={(e) => setYourName(e.target.value)}
-          />
-          <div className="text-sm text-gray-600">
-            Week total <b className="tabular text-gray-900">{formatHours(total)} h</b>
+      <div className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white/95 pt-3 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4">
+          <div className="min-w-0 flex-1">
+            {status ? (
+              <p className={`text-sm leading-snug ${status.error ? "text-red-600" : "text-emerald-700"}`} role="status">
+                {status.error ?? status.message}
+              </p>
+            ) : (
+              <p className="text-sm text-gray-600">
+                Week total <b className="tabular text-gray-900">{formatHours(total)} h</b>
+                {dirty && <span className="ml-2 text-amber-700">· not saved</span>}
+              </p>
+            )}
           </div>
-          {status && (
-            <p className={`text-sm ${status.error ? "text-red-600" : "text-emerald-700"}`} role="status">
-              {status.error ?? status.message}
-            </p>
-          )}
-          <button className="btn btn-primary ml-auto px-6" disabled={pending} onClick={save}>
+          <button className="btn btn-primary shrink-0 px-6" disabled={pending} onClick={save}>
             {pending ? "Saving…" : "Save week"}
           </button>
         </div>
@@ -343,9 +393,19 @@ export function WeekForm({
   );
 }
 
-function TimeSelect({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function TimeSelect({
+  label,
+  value,
+  onChange,
+  className = "",
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  className?: string;
+}) {
   return (
-    <select aria-label={label} className="input min-w-0" value={value} onChange={(e) => onChange(e.target.value)}>
+    <select aria-label={label} className={`input min-w-0 ${className}`} value={value} onChange={(e) => onChange(e.target.value)}>
       <option value="">{label}</option>
       {TIME_OPTIONS.map((t) => (
         <option key={t} value={t}>

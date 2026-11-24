@@ -8,11 +8,20 @@
   --color-brand-700: #1c389b;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   background: #f6f7f9;
   color: #111827;
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
 }
+
+/* Taps register immediately, with no double-tap-zoom delay. */
+button, a, select, input, label { touch-action: manipulation; }
 
 /* In a layer so Tailwind utilities (w-auto, sm:w-56, …) can override these. */
 @layer components {
@@ -56,6 +65,19 @@ body {
 .label { display: block; font-size: 0.8125rem; font-weight: 500; color: #374151; margin-bottom: 0.25rem; }
 .tabular { font-variant-numeric: tabular-nums; }
 }
+
+/* Phones and touch screens. */
+@media (max-width: 639px) {
+  /* Under 16px, iOS Safari zooms the page when a field is tapped. */
+  .input, select.input, input.input { font-size: 16px; }
+}
+@media (pointer: coarse) {
+  /* Comfortable tap targets (Apple and Google both recommend ~44px). */
+  .btn, .input { min-height: 2.75rem; }
+}
+
+/* Keep fixed bars clear of the iPhone home indicator. */
+.safe-bottom { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
 
 @media print {
   .no-print { display: none !important; }
