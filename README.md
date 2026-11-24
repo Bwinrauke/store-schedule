@@ -58,8 +58,10 @@ From then on, add everyone else from the app's **Admin** page.
 
 ### 3. Deploy on Vercel
 
-Import the repo, add the variables from `.env.example`
-(Supabase → Settings → API), and deploy.
+Import the repo into Vercel. Then either link the Supabase project to it
+through the Supabase ↔ Vercel integration (it fills in the keys), or add the
+variables from `.env.example` by hand (Supabase → Settings → API). Redeploy
+after the keys are in place.
 
 ### 4. First run
 
