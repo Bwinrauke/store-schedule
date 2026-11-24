@@ -37,7 +37,7 @@ Postgres and checks each one (see *Testing*).
 ### 1. Supabase
 
 1. Create a project at supabase.com.
-2. **SQL Editor** → paste and run `supabase/migrations/20261124000000_init.sql`.
+2. **SQL Editor** → run each file in `supabase/migrations/`, in name order.
 3. **Authentication → Sign In / Providers**: turn **off** "Allow new users to
    sign up". People are added from the Admin page instead.
 4. **Authentication → URL Configuration**: set **Site URL** to your Vercel URL
@@ -87,9 +87,11 @@ Database rules, against any scratch Postgres 15+:
 
 ```bash
 createdb schedule_test
+psql -d schedule_test -c 'create schema extensions'
 psql -d schedule_test -v ON_ERROR_STOP=1 \
   -f supabase/tests/shim.sql \
   -f supabase/migrations/20261124000000_init.sql \
+  -f supabase/migrations/20261124000100_harden.sql \
   -f supabase/tests/rls_test.sql
 # → ALL RLS TESTS PASSED
 ```
