@@ -1,37 +1,42 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ROLES, isStaffRole } from "@/lib/roles";
-import { formatDay, formatHours, formatTime, shiftHours, weekDays } from "@/lib/week";
-import { TIME_OPTIONS, emptyDays, type FormRow } from "@/lib/week-form";
+import { formatDay, formatHours, formatTime, parseDate, weekDays } from "@/lib/week";
+import { TIME_OPTIONS, buildPayload, cleanName, entryHours, isBlankEntry, type Entry } from "@/lib/week-form";
 import { saveWeek } from "./actions";
 
 const NAME_KEY = "schedule.submittedBy";
 let counter = 0;
 const newKey = () => `new-${Date.now()}-${counter++}`;
-const blankRow = (): FormRow => ({ key: newKey(), name: "", role: "", days: emptyDays() });
+const blankEntry = (day: number): Entry => ({ key: newKey(), day, name: "", role: "", start: "", end: "" });
+const round = (n: number) => Math.round(n * 100) / 100;
 
 export function WeekForm({
   token,
   storeId,
   week,
-  initialRows,
-  lastWeekRows,
+  initialEntries,
+  lastWeekEntries,
   roster,
   submission,
+  today,
 }: {
   token: string;
   storeId: string;
   week: string;
-  initialRows: FormRow[];
-  lastWeekRows: FormRow[];
+  initialEntries: Entry[];
+  lastWeekEntries: Entry[];
   roster: { name: string; role: string }[];
   submission: { by: string; at: string } | null;
+  today: string;
 }) {
   const router = useRouter();
-  const days = weekDays(week);
-  const [rows, setRows] = useState<FormRow[]>(initialRows.length ? initialRows : [blankRow()]);
+  const dates = weekDays(week);
+  const todayIndex = dates.indexOf(today);
+  const [day, setDay] = useState(todayIndex >= 0 ? todayIndex : 0);
+  const [entries, setEntries] = useState<Entry[]>(initialEntries);
   const [dirty, setDirty] = useState(false);
   const [yourName, setYourName] = useState("");
   const [status, setStatus] = useState<{ error: string | null; message?: string } | null>(null);
@@ -51,26 +56,74 @@ export function WeekForm({
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
 
-  const update = (key: string, change: (r: FormRow) => FormRow) => {
-    setRows((rs) => rs.map((r) => (r.key === key ? change(r) : r)));
+  const changed = (next: Entry[]) => {
+    setEntries(next);
     setDirty(true);
     setStatus(null);
   };
+  const update = (key: string, patch: Partial<Entry>) => changed(entries.map((e) => (e.key === key ? { ...e, ...patch } : e)));
 
-  const setDay = (key: string, i: number, field: "start" | "end", value: string) =>
-    update(key, (r) => ({ ...r, days: r.days.map((d, j) => (j === i ? { ...d, [field]: value } : d)) }));
+  const forDay = (d: number) => entries.filter((e) => e.day === d);
+  const dayEntries = forDay(day);
+  const dayHours = (d: number) => round(forDay(d).reduce((t, e) => t + entryHours(e), 0));
+  const dayPeople = (d: number) =>
+    new Set(forDay(d).filter((e) => cleanName(e.name)).map((e) => cleanName(e.name).toLowerCase())).size;
+  const total = round(entries.reduce((t, e) => t + entryHours(e), 0));
+  const weekIsBlank = entries.every(isBlankEntry);
 
-  const rowHours = (r: FormRow) =>
-    r.days.reduce((t, d) => (d.start && d.end && d.end > d.start ? t + shiftHours(d.start, d.end, 0) : t), 0);
-  const total = rows.reduce((t, r) => t + rowHours(r), 0);
-  const isBlank = rows.every((r) => !r.name.trim() && r.days.every((d) => !d.start && !d.end));
+  // Names to suggest: the store's roster plus anyone typed this week, with their role.
+  const known = useMemo(() => {
+    const map = new Map<string, { name: string; role: string }>();
+    for (const p of roster) map.set(p.name.toLowerCase(), p);
+    for (const e of entries) {
+      if (cleanName(e.name) && e.role) map.set(cleanName(e.name).toLowerCase(), { name: cleanName(e.name), role: e.role });
+    }
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [roster, entries]);
+
+  // Weekly hours per person, so overtime is visible while filling in days.
+  const perPerson = useMemo(() => {
+    const map = new Map<string, { name: string; hours: number }>();
+    for (const e of entries) {
+      const name = cleanName(e.name);
+      if (!name) continue;
+      const k = name.toLowerCase();
+      const cur = map.get(k) ?? { name, hours: 0 };
+      cur.hours = round(cur.hours + entryHours(e));
+      map.set(k, cur);
+    }
+    return [...map.values()].sort((a, b) => b.hours - a.hours || a.name.localeCompare(b.name));
+  }, [entries]);
+
+  const { dow } = formatDay(dates[day]);
+  const longDay = parseDate(dates[day]).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+  const prevDow = day > 0 ? formatDay(dates[day - 1]).dow : null;
+  const nextDow = day < 6 ? formatDay(dates[day + 1]).dow : null;
+
+  function copyFrom(fromDay: number) {
+    const copies = forDay(fromDay)
+      .filter((e) => !isBlankEntry(e))
+      .map((e) => ({ ...e, key: newKey(), day }));
+    changed([...entries.filter((e) => !(e.day === day && isBlankEntry(e))), ...copies]);
+  }
 
   function save() {
     try {
       localStorage.setItem(NAME_KEY, yourName.trim());
     } catch {}
+    const check = buildPayload(entries, week);
+    if ("error" in check) {
+      setDay(check.day);
+      setStatus({ error: check.error });
+      return;
+    }
     start(async () => {
-      const res = await saveWeek({ token, storeId, week, submittedBy: yourName, rows });
+      const res = await saveWeek({ token, storeId, week, submittedBy: yourName, entries });
       setStatus(res);
       if (!res.error) {
         setDirty(false);
@@ -84,114 +137,185 @@ export function WeekForm({
       {submission && !dirty && (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
           Submitted by {submission.by} on{" "}
-          {new Date(submission.at).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}.
-          You can still make changes and save again.
+          {new Date(submission.at).toLocaleString("en-US", {
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+          })}
+          . You can still make changes and save again.
         </p>
       )}
 
-      {isBlank && lastWeekRows.length > 0 && (
+      {weekIsBlank && lastWeekEntries.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-brand-100 bg-brand-50 px-4 py-3">
           <p className="text-sm text-brand-700">Nothing entered for this week yet.</p>
-          <button
-            className="btn btn-primary"
-            onClick={() => {
-              setRows(lastWeekRows.map((r) => ({ ...r, key: newKey() })));
-              setDirty(true);
-            }}
-          >
+          <button className="btn btn-primary" onClick={() => changed(lastWeekEntries.map((e) => ({ ...e, key: newKey() })))}>
             Start from last week
           </button>
         </div>
       )}
 
-      <datalist id="roster">
-        {roster.map((p) => <option key={p.name} value={p.name} />)}
+      {/* Day tabs */}
+      <div className="grid grid-cols-7 gap-1 sm:gap-2" role="tablist" aria-label="Day">
+        {dates.map((d, i) => {
+          const f = formatDay(d);
+          const people = dayPeople(i);
+          const selected = i === day;
+          return (
+            <button
+              key={d}
+              role="tab"
+              aria-selected={selected}
+              onClick={() => setDay(i)}
+              className={`rounded-lg border px-1 py-2 text-center ${
+                selected ? "border-brand-500 bg-brand-500 text-white" : "border-gray-200 bg-white hover:border-gray-300"
+              }`}
+            >
+              <div className="text-sm font-semibold">{f.dow}</div>
+              <div className={`text-xs ${selected ? "text-white/80" : "text-gray-500"}`}>{f.date.replace(/^\w+ /, "")}</div>
+              <div className={`mt-1 text-xs tabular ${selected ? "text-white" : people ? "text-gray-700" : "text-gray-400"}`}>
+                {people ? (
+                  <>
+                    {people}
+                    <span className="hidden sm:inline"> {people === 1 ? "person" : "people"}</span>
+                    <span className="hidden sm:inline"> · {formatHours(dayHours(i))}h</span>
+                  </>
+                ) : (
+                  "—"
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <datalist id="known-names">
+        {known.map((p) => (
+          <option key={p.name} value={p.name} />
+        ))}
       </datalist>
 
-      {rows.map((r, idx) => (
-        <section key={r.key} className="card p-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-48 flex-1">
-              <label className="label" htmlFor={`name-${r.key}`}>Employee {idx + 1}</label>
-              <input
-                id={`name-${r.key}`}
-                className="input"
-                list="roster"
-                placeholder="Full name"
-                autoComplete="off"
-                value={r.name}
-                onChange={(e) => {
-                  const name = e.target.value;
-                  const known = roster.find((p) => p.name.toLowerCase() === name.trim().toLowerCase());
-                  update(r.key, (row) => ({
-                    ...row,
-                    name,
-                    role: !row.role && known && isStaffRole(known.role) ? known.role : row.role,
-                  }));
-                }}
-              />
+      {/* Selected day */}
+      <section className="card p-4" role="tabpanel" aria-label={longDay}>
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-semibold">{longDay}</h2>
+          <span className="text-sm text-gray-600">
+            {dayPeople(day)} {dayPeople(day) === 1 ? "person" : "people"} ·{" "}
+            <b className="tabular">{formatHours(dayHours(day))} h</b>
+          </span>
+        </div>
+
+        {dayEntries.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center">
+            <p className="text-sm text-gray-500">No one scheduled on {dow} yet.</p>
+            <div className="mt-3 flex flex-wrap justify-center gap-2">
+              <button className="btn btn-primary" onClick={() => changed([...entries, blankEntry(day)])}>
+                + Add person
+              </button>
+              {prevDow && forDay(day - 1).some((e) => !isBlankEntry(e)) && (
+                <button className="btn" onClick={() => copyFrom(day - 1)}>
+                  Copy {prevDow}&apos;s shifts
+                </button>
+              )}
             </div>
-            <div>
-              <span className="label">Role</span>
-              <div className="flex overflow-hidden rounded-lg border border-gray-300" role="radiogroup" aria-label="Role">
-                {ROLES.map((role) => (
-                  <button
-                    key={role}
-                    type="button"
-                    role="radio"
-                    aria-checked={r.role === role}
-                    onClick={() => update(r.key, (row) => ({ ...row, role }))}
-                    className={`min-h-10 border-l border-gray-300 px-3 text-sm first:border-l-0 ${
-                      r.role === role ? "bg-brand-500 font-medium text-white" : "bg-white text-gray-700 hover:bg-gray-50"
-                    }`}
-                  >
-                    {role}
-                  </button>
-                ))}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <div className="hidden grid-cols-[1fr_auto_8.5rem_8.5rem_3.5rem_2.5rem] gap-2 px-1 text-xs font-medium text-gray-500 md:grid">
+              <span>Employee</span>
+              <span>Role</span>
+              <span>Start</span>
+              <span>End</span>
+              <span className="text-right">Hours</span>
+              <span />
+            </div>
+            {dayEntries.map((e) => (
+              <div
+                key={e.key}
+                className="grid grid-cols-2 gap-2 rounded-lg border border-gray-200 p-2 md:grid-cols-[1fr_auto_8.5rem_8.5rem_3.5rem_2.5rem] md:items-center md:border-0 md:p-0"
+              >
+                <input
+                  className="input col-span-2 md:col-span-1"
+                  list="known-names"
+                  placeholder="Employee name"
+                  aria-label="Employee name"
+                  autoComplete="off"
+                  value={e.name}
+                  onChange={(ev) => {
+                    const name = ev.target.value;
+                    const match = known.find((p) => p.name.toLowerCase() === cleanName(name).toLowerCase());
+                    update(e.key, { name, role: !e.role && match && isStaffRole(match.role) ? match.role : e.role });
+                  }}
+                />
+                <div
+                  className="col-span-2 flex overflow-hidden rounded-lg border border-gray-300 md:col-span-1"
+                  role="radiogroup"
+                  aria-label="Role"
+                >
+                  {ROLES.map((role) => (
+                    <button
+                      key={role}
+                      type="button"
+                      role="radio"
+                      aria-checked={e.role === role}
+                      onClick={() => update(e.key, { role })}
+                      className={`min-h-10 flex-1 border-l border-gray-300 px-2 text-sm whitespace-nowrap first:border-l-0 md:flex-none md:px-3 ${
+                        e.role === role ? "bg-brand-500 font-medium text-white" : "bg-white text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      {role}
+                    </button>
+                  ))}
+                </div>
+                <TimeSelect label="Start" value={e.start} onChange={(v) => update(e.key, { start: v })} />
+                <TimeSelect label="End" value={e.end} onChange={(v) => update(e.key, { end: v })} />
+                <div className="flex items-center text-sm text-gray-600 md:justify-end">
+                  <span className="mr-1 md:hidden">Hours:</span>
+                  <b className="tabular text-gray-900">{formatHours(round(entryHours(e)))}</b>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-danger justify-self-end px-2"
+                  aria-label={`Remove ${e.name || "this shift"}`}
+                  onClick={() => changed(entries.filter((x) => x.key !== e.key))}
+                >
+                  ✕
+                </button>
               </div>
-            </div>
-            <div className="text-right">
-              <span className="label">Hours</span>
-              <div className="min-h-10 text-xl leading-10 font-semibold tabular">{formatHours(rowHours(r))}</div>
-            </div>
-            <button
-              type="button"
-              className="btn btn-danger"
-              aria-label={`Remove employee ${idx + 1}`}
-              onClick={() => {
-                if ((r.name || rowHours(r) > 0) && !confirm(`Remove ${r.name || "this row"} from this week?`)) return;
-                setRows((rs) => (rs.length === 1 ? [blankRow()] : rs.filter((x) => x.key !== r.key)));
-                setDirty(true);
-              }}
-            >
-              Remove
+            ))}
+            <button className="btn w-full border-dashed" onClick={() => changed([...entries, blankEntry(day)])}>
+              + Add person to {dow}
             </button>
           </div>
+        )}
 
-          <div className="mt-4 grid gap-2 md:grid-cols-7">
-            {days.map((d, i) => {
-              const { dow, date } = formatDay(d);
-              const day = r.days[i];
-              const off = !day.start && !day.end;
-              return (
-                <div key={d} className={`flex items-center gap-2 rounded-lg border p-2 md:flex-col md:items-stretch ${off ? "border-gray-200 bg-gray-50" : "border-brand-100 bg-brand-50/50"}`}>
-                  <div className="w-14 shrink-0 text-sm leading-tight md:w-auto md:whitespace-nowrap">
-                    <span className="block font-medium md:inline">{dow}</span>{" "}
-                    <span className="block text-xs text-gray-500 md:inline md:text-sm">{date}</span>
-                  </div>
-                  <TimeSelect label={`${dow} start`} value={day.start} placeholder="Off" onChange={(v) => setDay(r.key, i, "start", v)} />
-                  <span className="text-gray-400 md:hidden" aria-hidden>–</span>
-                  <TimeSelect label={`${dow} end`} value={day.end} placeholder={off ? "Off" : "End"} onChange={(v) => setDay(r.key, i, "end", v)} />
-                </div>
-              );
-            })}
-          </div>
+        <div className="mt-4 flex justify-between gap-2 border-t border-gray-100 pt-3">
+          <button className="btn" disabled={day === 0} onClick={() => setDay(day - 1)}>
+            ← {prevDow ?? "Prev"}
+          </button>
+          <button className="btn btn-primary" disabled={day === 6} onClick={() => setDay(day + 1)}>
+            Next: {nextDow ?? "—"} →
+          </button>
+        </div>
+      </section>
+
+      {perPerson.length > 0 && (
+        <section className="card p-4">
+          <h3 className="mb-2 text-sm font-semibold text-gray-700">Hours this week</h3>
+          <ul className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2 lg:grid-cols-3">
+            {perPerson.map((p) => (
+              <li key={p.name} className="flex justify-between gap-2 border-b border-gray-50 py-0.5">
+                <span>{p.name}</span>
+                <span className={`tabular ${p.hours > 40 ? "font-semibold text-amber-700" : "text-gray-700"}`}>
+                  {formatHours(p.hours)} h{p.hours > 40 ? " · overtime" : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
         </section>
-      ))}
-
-      <button type="button" className="btn w-full border-dashed py-3" onClick={() => setRows((rs) => [...rs, blankRow()])}>
-        + Add employee
-      </button>
+      )}
 
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3">
@@ -203,7 +327,7 @@ export function WeekForm({
             onChange={(e) => setYourName(e.target.value)}
           />
           <div className="text-sm text-gray-600">
-            Week total <b className="tabular text-gray-900">{formatHours(Math.round(total * 100) / 100)} h</b>
+            Week total <b className="tabular text-gray-900">{formatHours(total)} h</b>
           </div>
           {status && (
             <p className={`text-sm ${status.error ? "text-red-600" : "text-emerald-700"}`} role="status">
@@ -219,12 +343,14 @@ export function WeekForm({
   );
 }
 
-function TimeSelect({ label, value, placeholder, onChange }: { label: string; value: string; placeholder: string; onChange: (v: string) => void }) {
+function TimeSelect({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
-    <select aria-label={label} className="input min-h-9 min-w-0 flex-1 py-1 pr-1 pl-2 text-sm" value={value} onChange={(e) => onChange(e.target.value)}>
-      <option value="">{placeholder}</option>
+    <select aria-label={label} className="input min-w-0" value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">{label}</option>
       {TIME_OPTIONS.map((t) => (
-        <option key={t} value={t}>{formatTime(t)}</option>
+        <option key={t} value={t}>
+          {formatTime(t)}
+        </option>
       ))}
     </select>
   );

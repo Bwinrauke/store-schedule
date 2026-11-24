@@ -1,46 +1,50 @@
 import { describe, expect, it } from "vitest";
-import { buildPayload, emptyDays, TIME_OPTIONS, type FormRow } from "./week-form";
+import { buildPayload, entryHours, TIME_OPTIONS, type Entry } from "./week-form";
 
-const row = (over: Partial<FormRow>): FormRow => ({ key: "k", name: "Ann", role: "Cashier", days: emptyDays(), ...over });
+const e = (over: Partial<Entry>): Entry => ({ key: "k", day: 1, name: "Ann", role: "Cashier", start: "09:00", end: "17:00", ...over });
+const W = "2026-11-22"; // Sunday
 
 describe("buildPayload", () => {
-  it("maps day columns to dates and skips days off", () => {
-    const days = emptyDays();
-    days[0] = { start: "09:00", end: "17:00" };
-    days[6] = { start: "12:00", end: "16:00" };
-    const res = buildPayload([row({ days })], "2026-11-22");
-    expect(res).toEqual({
-      rows: [{ name: "Ann", role: "Cashier", days: [
-        { date: "2026-11-22", start: "09:00", end: "17:00" },
-        { date: "2026-11-28", start: "12:00", end: "16:00" },
-      ] }],
+  it("turns day entries into dated shifts, in day order", () => {
+    expect(buildPayload([e({ day: 6, start: "12:00", end: "16:00" }), e({ day: 0 })], W)).toEqual({
+      shifts: [
+        { name: "Ann", role: "Cashier", date: "2026-11-22", start: "09:00", end: "17:00" },
+        { name: "Ann", role: "Cashier", date: "2026-11-28", start: "12:00", end: "16:00" },
+      ],
     });
   });
-  it("drops fully blank rows", () => {
-    expect(buildPayload([row({ name: "  ", role: "" })], "2026-11-22")).toEqual({ rows: [] });
+  it("skips blank rows and tidies names", () => {
+    expect(buildPayload([e({ name: "", role: "", start: "", end: "" }), e({ name: "  Ann   Lee " })], W)).toEqual({
+      shifts: [{ name: "Ann Lee", role: "Cashier", date: "2026-11-23", start: "09:00", end: "17:00" }],
+    });
   });
-  it("explains each mistake", () => {
-    const half = emptyDays(); half[1] = { start: "09:00", end: "" };
-    const back = emptyDays(); back[1] = { start: "17:00", end: "09:00" };
-    const orphan = emptyDays(); orphan[2] = { start: "09:00", end: "10:00" };
-    expect(buildPayload([row({ role: "" })], "2026-11-22")).toEqual({ error: "Pick a role for Ann." });
-    expect(buildPayload([row({ days: half })], "2026-11-22")).toMatchObject({ error: expect.stringContaining("both a start and an end") });
-    expect(buildPayload([row({ days: back })], "2026-11-22")).toMatchObject({ error: expect.stringContaining("ends before") });
-    expect(buildPayload([row({ name: "", days: orphan })], "2026-11-22")).toMatchObject({ error: expect.stringContaining("no employee name") });
-    expect(buildPayload([row({}), row({ name: "ann " })], "2026-11-22")).toEqual({ error: "ann is listed twice." });
+  it("allows a split shift but not an overlap", () => {
+    expect(buildPayload([e({ end: "12:00" }), e({ name: "ann", start: "13:00", end: "17:00" })], W)).toHaveProperty("shifts");
+    expect(buildPayload([e({ end: "13:00" }), e({ name: "ann", start: "12:00" })], W)).toMatchObject({
+      error: "Mon: ann is listed twice at overlapping times.",
+      day: 1,
+    });
   });
+  it("names the day in every error", () => {
+    expect(buildPayload([e({ role: "" })], W)).toMatchObject({ error: "Mon: pick a role for Ann." });
+    expect(buildPayload([e({ name: "" })], W)).toMatchObject({ error: "Mon: a shift has times but no employee name." });
+    expect(buildPayload([e({ end: "" })], W)).toMatchObject({ error: "Mon: set both a start and an end time for Ann." });
+    expect(buildPayload([e({ start: "17:00", end: "09:00" })], W)).toMatchObject({ error: "Mon: Ann's shift ends before it starts." });
+    for (const [start, end] of [["07:45", "12:00"], ["13:00", "21:15"], ["09:10", "12:00"]]) {
+      expect(buildPayload([e({ start, end })], W)).toMatchObject({ error: expect.stringContaining("between 8:00 AM and 9:00 PM") });
+    }
+  });
+});
+
+describe("times", () => {
   it("offers 15-minute times from 8:00 AM to 9:00 PM", () => {
     expect(TIME_OPTIONS[0]).toBe("08:00");
     expect(TIME_OPTIONS[1]).toBe("08:15");
     expect(TIME_OPTIONS.at(-1)).toBe("21:00");
     expect(TIME_OPTIONS).toHaveLength(53);
   });
-  it("rejects times outside store hours or off the quarter hour", () => {
-    const early = emptyDays(); early[0] = { start: "07:45", end: "12:00" };
-    const late = emptyDays(); late[0] = { start: "13:00", end: "21:15" };
-    const odd = emptyDays(); odd[0] = { start: "09:10", end: "12:00" };
-    for (const days of [early, late, odd]) {
-      expect(buildPayload([row({ days })], "2026-11-22")).toMatchObject({ error: expect.stringContaining("between 8:00 AM and 9:00 PM") });
-    }
+  it("counts hours only for complete entries", () => {
+    expect(entryHours(e({ start: "09:15", end: "17:45" }))).toBe(8.5);
+    expect(entryHours(e({ end: "" }))).toBe(0);
   });
 });

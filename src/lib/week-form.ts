@@ -1,21 +1,17 @@
-import { addDays } from "./week";
+import { addDays, formatDay, minutesOf } from "./week";
 import { isStaffRole, type StaffRole } from "./roles";
 
-/** One employee's week as the manager edits it. Empty start/end = off. */
-export type FormRow = {
+/** One shift as the manager enters it, on day 0–6 of the week. */
+export type Entry = {
   key: string;
+  day: number;
   name: string;
   role: StaffRole | "";
-  days: { start: string; end: string }[]; // 7 entries, "HH:MM" or ""
+  start: string; // "HH:MM" or ""
+  end: string;
 };
 
-export type SavePayloadRow = {
-  name: string;
-  role: StaffRole;
-  days: { date: string; start: string; end: string }[];
-};
-
-export const emptyDays = () => Array.from({ length: 7 }, () => ({ start: "", end: "" }));
+export type SaveShift = { name: string; role: StaffRole; date: string; start: string; end: string };
 
 /** Store hours. The database enforces the same limits. */
 export const OPEN_TIME = "08:00";
@@ -27,38 +23,44 @@ export const TIME_OPTIONS: string[] = Array.from({ length: (21 - 8) * 4 + 1 }, (
   return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 });
 
+export const cleanName = (name: string) => name.trim().replace(/\s+/g, " ");
+
+export const isBlankEntry = (e: Entry) => !e.name.trim() && !e.start && !e.end;
+
+/** Paid hours for an entry, or 0 while it's incomplete. */
+export function entryHours(e: Entry): number {
+  if (!e.start || !e.end || e.end <= e.start) return 0;
+  return (minutesOf(e.end) - minutesOf(e.start)) / 60;
+}
+
 /**
  * Check the form and turn it into what save_week expects. Returns the first
- * problem in plain words, so the manager knows exactly what to fix.
+ * problem in plain words, naming the day, so the manager knows what to fix.
  */
-export function buildPayload(rows: FormRow[], week: string): { rows: SavePayloadRow[] } | { error: string } {
-  const out: SavePayloadRow[] = [];
-  const seen = new Set<string>();
+export function buildPayload(
+  entries: Entry[],
+  week: string,
+): { shifts: SaveShift[] } | { error: string; day: number } {
+  const shifts: SaveShift[] = [];
+  const ordered = [...entries].sort((a, b) => a.day - b.day);
 
-  for (const r of rows) {
-    const name = r.name.trim().replace(/\s+/g, " ");
-    const hasTimes = r.days.some((d) => d.start || d.end);
-    if (!name) {
-      if (hasTimes) return { error: "A row has hours but no employee name." };
-      continue;
+  for (const e of ordered) {
+    if (isBlankEntry(e)) continue;
+    const date = addDays(week, e.day);
+    const { dow } = formatDay(date);
+    const name = cleanName(e.name);
+    if (!name) return { error: `${dow}: a shift has times but no employee name.`, day: e.day };
+    if (!isStaffRole(e.role)) return { error: `${dow}: pick a role for ${name}.`, day: e.day };
+    if (!e.start || !e.end) return { error: `${dow}: set both a start and an end time for ${name}.`, day: e.day };
+    if (e.end <= e.start) return { error: `${dow}: ${name}'s shift ends before it starts.`, day: e.day };
+    if (!TIME_OPTIONS.includes(e.start) || !TIME_OPTIONS.includes(e.end)) {
+      return { error: `${dow}: shifts must be between 8:00 AM and 9:00 PM, in 15-minute steps.`, day: e.day };
     }
-    if (!isStaffRole(r.role)) return { error: `Pick a role for ${name}.` };
-    const lower = name.toLowerCase();
-    if (seen.has(lower)) return { error: `${name} is listed twice.` };
-    seen.add(lower);
-
-    const days: SavePayloadRow["days"] = [];
-    for (let i = 0; i < 7; i++) {
-      const { start, end } = r.days[i] ?? { start: "", end: "" };
-      if (!start && !end) continue;
-      if (!start || !end) return { error: `${name}: set both a start and an end time, or mark the day off.` };
-      if (end <= start) return { error: `${name}: a shift ends before it starts.` };
-      if (!TIME_OPTIONS.includes(start) || !TIME_OPTIONS.includes(end)) {
-        return { error: `${name}: shifts must be between 8:00 AM and 9:00 PM, in 15-minute steps.` };
-      }
-      days.push({ date: addDays(week, i), start, end });
-    }
-    out.push({ name, role: r.role, days });
+    const clash = shifts.find(
+      (s) => s.date === date && s.name.toLowerCase() === name.toLowerCase() && s.start < e.end && e.start < s.end,
+    );
+    if (clash) return { error: `${dow}: ${name} is listed twice at overlapping times.`, day: e.day };
+    shifts.push({ name, role: e.role, date, start: e.start, end: e.end });
   }
-  return { rows: out };
+  return { shifts };
 }

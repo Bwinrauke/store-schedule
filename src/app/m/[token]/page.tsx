@@ -4,8 +4,8 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { isValidManagerToken } from "@/lib/managerLink";
 import { isStaffRole } from "@/lib/roles";
 import type { Shift, Store } from "@/lib/types";
-import { addDays, resolveWeek } from "@/lib/week";
-import { emptyDays, type FormRow } from "@/lib/week-form";
+import { addDays, resolveWeek, todayIso } from "@/lib/week";
+import type { Entry } from "@/lib/week-form";
 import { StorePicker } from "./StorePicker";
 import { WeekForm } from "./WeekForm";
 
@@ -13,19 +13,18 @@ export const metadata = { title: "Weekly Schedule", robots: { index: false, foll
 
 type ShiftWithName = Shift & { employees: { full_name: string } | null };
 
-function toRows(shifts: ShiftWithName[], week: string): FormRow[] {
-  const byPerson = new Map<string, FormRow>();
-  for (const s of shifts) {
-    const name = s.employees?.full_name ?? "";
-    let row = byPerson.get(s.employee_id);
-    if (!row) {
-      row = { key: s.employee_id, name, role: isStaffRole(s.role) ? s.role : "", days: emptyDays() };
-      byPerson.set(s.employee_id, row);
-    }
-    const i = Math.round((Date.parse(s.shift_date) - Date.parse(week)) / 86_400_000);
-    if (i >= 0 && i < 7) row.days[i] = { start: s.start_time.slice(0, 5), end: s.end_time.slice(0, 5) };
-  }
-  return [...byPerson.values()].sort((a, b) => a.name.localeCompare(b.name));
+function toEntries(shifts: ShiftWithName[], week: string): Entry[] {
+  return shifts
+    .map((s) => ({
+      key: s.id,
+      day: Math.round((Date.parse(s.shift_date) - Date.parse(week)) / 86_400_000),
+      name: s.employees?.full_name ?? "",
+      role: isStaffRole(s.role) ? s.role : ("" as const),
+      start: s.start_time.slice(0, 5),
+      end: s.end_time.slice(0, 5),
+    }))
+    .filter((e) => e.day >= 0 && e.day < 7)
+    .sort((a, b) => a.day - b.day || a.start.localeCompare(b.start) || a.name.localeCompare(b.name));
 }
 
 export default async function ManagerPage({
@@ -92,8 +91,9 @@ export default async function ManagerPage({
           token={token}
           storeId={store.id}
           week={week}
-          initialRows={toRows((thisWeek ?? []) as unknown as ShiftWithName[], week)}
-          lastWeekRows={toRows((lastWeek ?? []) as unknown as ShiftWithName[], addDays(week, -7))}
+          initialEntries={toEntries((thisWeek ?? []) as unknown as ShiftWithName[], week)}
+          lastWeekEntries={toEntries((lastWeek ?? []) as unknown as ShiftWithName[], addDays(week, -7))}
+          today={todayIso()}
           roster={(roster ?? []).map((r) => ({ name: r.full_name as string, role: r.role as string }))}
           submission={submission ? { by: submission.submitted_by as string, at: submission.submitted_at as string } : null}
         />

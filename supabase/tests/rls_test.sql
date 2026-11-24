@@ -14,56 +14,67 @@ insert into public.stores (id, name, code) values
 set role service_role;
 do $$ begin
   assert public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'Maria',
-    '[{"name":"Ann  Lee","role":"Cashier","days":[
-        {"date":"2026-11-22","start":"09:00","end":"17:00"},
-        {"date":"2026-11-23","start":"12:00","end":"16:30"}]},
-      {"name":"Bob","role":"Keyholder","days":[{"date":"2026-11-22","start":"13:00","end":"21:00"}]},
-      {"name":"   ","role":"Cashier","days":[]}]') = 3, 'saved 3 shifts, blank row skipped';
-  assert (select full_name from public.employees where role = 'Cashier') = 'Ann Lee', 'name whitespace normalised';
+    '[{"name":"Ann  Lee","role":"Cashier","date":"2026-11-22","start":"09:00","end":"17:00"},
+      {"name":"Ann Lee","role":"Keyholder","date":"2026-11-23","start":"12:00","end":"16:30"},
+      {"name":"Bob","role":"Keyholder","date":"2026-11-22","start":"13:00","end":"21:00"}]') = 3, 'saved 3 shifts';
+  assert (select count(*) from public.employees) = 2, 'Ann reused across days';
+  assert (select full_name from public.employees where lower(full_name) = 'ann lee') = 'Ann Lee', 'name whitespace normalised';
+  assert (select role from public.shifts where shift_date = '2026-11-22' and start_time = '09:00') = 'Cashier', 'role kept per shift';
+  assert (select role from public.shifts where shift_date = '2026-11-23') = 'Keyholder', 'different role another day';
+  assert (select role from public.employees where lower(full_name) = 'ann lee') = 'Keyholder', 'employee keeps latest role';
 
-  -- Resubmitting replaces the week, and the same person (any casing) is reused.
+  -- A split shift on the same day is fine as long as it doesn't overlap.
   assert public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'Maria',
-    '[{"name":"ann lee","role":"Sales Associate","days":[{"date":"2026-11-24","start":"10:00","end":"18:00"}]}]') = 1, 'resubmit';
-  assert (select count(*) from public.shifts) = 1, 'old shifts replaced';
+    '[{"name":"ann lee","role":"Sales Associate","date":"2026-11-24","start":"08:00","end":"12:00"},
+      {"name":"Ann Lee","role":"Sales Associate","date":"2026-11-24","start":"13:00","end":"17:00"}]') = 2, 'resubmit with split shift';
+  assert (select count(*) from public.shifts) = 2, 'old shifts replaced';
   assert (select count(*) from public.employees) = 2, 'no duplicate employee';
-  assert (select role from public.employees where lower(full_name) = 'ann lee') = 'Sales Associate', 'role updated';
   assert (select actor_name from public.audit_log order by id desc limit 1) = 'Maria', 'audit records submitter';
 end $$;
 
-do $$ begin
-  begin perform public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'M',
-      '[{"name":"Zed","role":"Manager","days":[{"date":"2026-11-22","start":"09:00","end":"17:00"}]}]');
-    raise exception 'FAIL: bad role accepted';
-  exception when check_violation then null; end;
-  begin perform public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'M',
-      '[{"name":"Ann Lee","role":"Cashier","days":[]},{"name":"ANN LEE","role":"Cashier","days":[]}]');
-    raise exception 'FAIL: duplicate name accepted';
-  exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
-  begin perform public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'M',
-      '[{"name":"Ann Lee","role":"Cashier","days":[{"date":"2026-12-05","start":"09:00","end":"17:00"}]}]');
-    raise exception 'FAIL: out-of-week date accepted';
-  exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
-  begin perform public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'M',
-      '[{"name":"Ann Lee","role":"Cashier","days":[{"date":"2026-11-22","start":"17:00","end":"09:00"}]}]');
-    raise exception 'FAIL: backwards shift accepted';
-  exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
+do $$
+declare
+  bad text[] := array[
+    '[{"name":"Zed","role":"Manager","date":"2026-11-22","start":"09:00","end":"17:00"}]',
+    '[{"name":"Ann Lee","role":"Cashier","date":"2026-11-22","start":"07:45","end":"12:00"}]',
+    '[{"name":"Ann Lee","role":"Cashier","date":"2026-11-22","start":"13:00","end":"21:15"}]',
+    '[{"name":"Ann Lee","role":"Cashier","date":"2026-11-22","start":"09:10","end":"12:00"}]'];
+  b text;
+begin
+  foreach b in array bad loop
+    begin perform public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'M', b::jsonb);
+      raise exception 'FAIL: accepted %', b;
+    exception when check_violation then null; end;
+  end loop;
+
+  -- Friendly errors raised by save_week itself.
+  bad := array[
+    '[{"name":"Ann Lee","role":"Cashier","date":"2026-11-22","start":"09:00","end":"13:00"},
+      {"name":"ANN LEE","role":"Cashier","date":"2026-11-22","start":"12:00","end":"16:00"}]',
+    '[{"name":"Ann Lee","role":"Cashier","date":"2026-12-05","start":"09:00","end":"17:00"}]',
+    '[{"name":"Ann Lee","role":"Cashier","date":"2026-11-22","start":"17:00","end":"09:00"}]',
+    '[{"name":"  ","role":"Cashier","date":"2026-11-22","start":"09:00","end":"17:00"}]'];
+  foreach b in array bad loop
+    begin perform public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'M', b::jsonb);
+      raise exception 'FAIL: accepted %', b;
+    exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
+  end loop;
   begin perform public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', '  ', '[]');
     raise exception 'FAIL: blank submitter accepted';
   exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
-  begin perform public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'M',
-      '[{"name":"Ann Lee","role":"Cashier","days":[{"date":"2026-11-22","start":"07:45","end":"12:00"}]}]');
-    raise exception 'FAIL: before 8 AM accepted';
-  exception when check_violation then null; end;
-  begin perform public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'M',
-      '[{"name":"Ann Lee","role":"Cashier","days":[{"date":"2026-11-22","start":"13:00","end":"21:15"}]}]');
-    raise exception 'FAIL: after 9 PM accepted';
-  exception when check_violation then null; end;
-  begin perform public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'M',
-      '[{"name":"Ann Lee","role":"Cashier","days":[{"date":"2026-11-22","start":"09:10","end":"12:00"}]}]');
-    raise exception 'FAIL: off-quarter-hour accepted';
-  exception when check_violation then null; end;
+
   -- A failed save must leave the previous week intact.
-  assert (select count(*) from public.shifts) = 1, 'failed saves roll back';
+  assert (select count(*) from public.shifts) = 2, 'failed saves roll back';
+end $$;
+
+-- Overlap message names the person and the day.
+do $$ begin
+  perform public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'M',
+    '[{"name":"Ann Lee","role":"Cashier","date":"2026-11-23","start":"09:00","end":"13:00"},
+      {"name":"Ann Lee","role":"Cashier","date":"2026-11-23","start":"12:00","end":"16:00"}]');
+  raise exception 'FAIL: overlap accepted';
+exception when raise_exception then
+  assert sqlerrm = 'Ann Lee is scheduled twice at overlapping times on Monday, Nov 23.', sqlerrm;
 end $$;
 
 -- ---- The public API key (anon) can do nothing ---------------------------
@@ -94,7 +105,7 @@ end $$;
 set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000e';
 do $$ declare r record; begin
   select * into r from public.week_summary('2026-11-22') where store_code = '101';
-  assert r.total_hours = 8 and r.sales_hours = 8 and r.cashier_hours = 0, 'role hours';
+  assert r.total_hours = 8 and r.sales_hours = 8 and r.cashier_hours = 0 and r.keyholder_hours = 0, 'role hours';
   assert r.submitted_by = 'Maria', 'submitter shown';
   assert (select count(*) from public.week_summary('2026-11-22')) = 2, 'all stores listed';
   assert (select submitted_by from public.week_summary('2026-11-22') where store_code = '102') is null, 'unsubmitted store';
