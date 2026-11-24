@@ -2,15 +2,18 @@
 
 Weekly employee schedules for every store, in one place.
 
-- **Store managers** build their store's week in a simple grid: click a day to
-  add a shift, pick a preset (Open / Mid / Close), save. Copy last week in one
-  click, print it for the back room, or export it to CSV.
-- **Upper management** gets an overview of every store for any week: scheduled
-  hours, change vs last week, staff scheduled, days with nobody on, which
-  stores haven't built their week yet, and who is working today. Click through
-  to any store's full grid.
-- **Admin** (upper management only): add stores, add people, choose who is a
-  store manager vs upper management, and which stores each manager runs.
+- **Store managers** need no account. They open one private link, type their
+  store number (or pick the store from a list), and for each employee enter a
+  name, tap a role (Cashier, Sales Associate or Keyholder), and choose start
+  and end times for each day. Hours add up as they go. They type their own
+  name once and press **Save week**. Next week, **Start from last week** fills
+  it all in.
+- **Upper management** signs in and gets an overview of every store for any
+  week: hours by role, total vs last week, who submitted and when, which
+  stores haven't submitted, days with nobody on, and who is working today.
+  Click through to any store's week, or export to CSV.
+- **Admin**: the managers' link (copy it, or replace it if it leaks), stores,
+  and upper-management logins.
 
 Next.js 15 on Vercel, Supabase (Postgres) for data and sign-in.
 
@@ -19,15 +22,16 @@ Next.js 15 on Vercel, Supabase (Postgres) for data and sign-in.
 All access rules live in the database (`supabase/migrations/`), not the web
 page, so they hold even against someone calling the API directly:
 
-- A manager can only read or change the stores assigned to them.
-  Upper management sees and edits everything.
-- Nobody can promote themselves; only upper management can change roles.
-- A shift can't put one store's employee on another store's schedule.
-- The database refuses double-booking the same person at overlapping times,
-  and shifts that end before they start.
-- Every shift and employee change is written to `audit_log` with who did it
-  and when, before and after.
-- Only invited people can sign in; there is no public sign-up.
+- The public API key can read and write nothing. Managers' saves go through
+  the web server, which checks the link's secret on every save, then calls one
+  database function that saves the whole week or nothing.
+- Only signed-in upper management can read schedules. Nobody can promote
+  themselves; there is no public sign-up.
+- Roles are a fixed list, shifts must end after they start, the same person
+  can't be double-booked, and the same name maps to one employee per store
+  (any capitalisation).
+- Every change is written to `audit_log` with who made it (the manager's typed
+  name, or the signed-in user) and the before and after.
 
 These rules are tested: `supabase/tests/rls_test.sql` runs against a real
 Postgres and checks each one (see *Testing*).
@@ -65,10 +69,9 @@ after the keys are in place.
 
 ### 4. First run
 
-1. Admin → add your stores.
-2. Admin → add each store manager with their store.
-3. Managers sign in at the site with their email (a link is emailed), add
-   their employees, and build the week.
+1. Admin → add your stores, each with its store number.
+2. Admin → copy the store manager link and send it to your managers.
+3. Managers open it, pick their store, and enter the week.
 
 ## Local development
 
@@ -81,7 +84,7 @@ npm run dev
 ## Testing
 
 ```bash
-npm test          # date/time and hours math
+npm test          # dates, hours, and the manager form checks
 npm run typecheck
 ```
 
@@ -94,8 +97,9 @@ psql -d schedule_test -v ON_ERROR_STOP=1 \
   -f supabase/tests/shim.sql \
   -f supabase/migrations/20261124000000_init.sql \
   -f supabase/migrations/20261124000100_harden.sql \
+  -f supabase/migrations/20261124000200_link_access.sql \
   -f supabase/tests/rls_test.sql
-# → ALL RLS TESTS PASSED
+# → ALL TESTS PASSED
 ```
 
 `shim.sql` stands in for Supabase's `auth` schema; never run it on the real

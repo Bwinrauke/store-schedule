@@ -2,7 +2,8 @@ import { SUPABASE_PUBLIC_KEY, SUPABASE_URL } from "./env";
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-const PUBLIC_PATHS = ["/login", "/auth/callback", "/auth/error"];
+/** Reachable without signing in. /m/ is the manager link, checked by its own secret. */
+const PUBLIC_PATHS = ["/login", "/auth/callback", "/auth/error", "/m"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });

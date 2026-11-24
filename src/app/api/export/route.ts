@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getProfile } from "@/lib/session";
 import { addDays, resolveWeek } from "@/lib/week";
 
 function csvCell(v: unknown): string {
@@ -11,13 +12,15 @@ function csvCell(v: unknown): string {
 
 /** CSV of a week's shifts. RLS limits it to the stores the caller can see. */
 export async function GET(request: NextRequest) {
+  const profile = await getProfile();
+  if (profile.role !== "executive") return NextResponse.json({ error: "Not allowed" }, { status: 403 });
   const week = resolveWeek(request.nextUrl.searchParams.get("week"));
   const store = request.nextUrl.searchParams.get("store");
 
   const supabase = await createClient();
   let query = supabase
     .from("shift_details")
-    .select("store_name, employee_name, position, shift_date, start_time, end_time, break_minutes, hours, note")
+    .select("store_code, store_name, employee_name, role, shift_date, start_time, end_time, hours")
     .gte("shift_date", week)
     .lte("shift_date", addDays(week, 6))
     .order("store_name")
@@ -28,11 +31,11 @@ export async function GET(request: NextRequest) {
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-  const header = ["Store", "Employee", "Role", "Date", "Start", "End", "Break (min)", "Paid hours", "Note"];
+  const header = ["Store #", "Store", "Employee", "Role", "Date", "Start", "End", "Hours"];
   const lines = [header.map(csvCell).join(",")];
   for (const r of data ?? []) {
     lines.push(
-      [r.store_name, r.employee_name, r.position, r.shift_date, r.start_time.slice(0, 5), r.end_time.slice(0, 5), r.break_minutes, r.hours, r.note]
+      [r.store_code, r.store_name, r.employee_name, r.role, r.shift_date, r.start_time.slice(0, 5), r.end_time.slice(0, 5), r.hours]
         .map(csvCell)
         .join(","),
     );

@@ -17,15 +17,15 @@ export function StoresPanel({ stores }: { stores: Store[] }) {
         {stores.map((s) => <StoreRow key={s.id} store={s} />)}
         <form
           ref={formRef}
-          className="grid gap-2 p-3 sm:grid-cols-[2fr_1fr_1fr_auto]"
+          className="grid gap-2 p-3 sm:grid-cols-[1fr_2fr_1fr_auto]"
           action={(fd) => start(async () => {
             const res = await createStore(fd);
             setError(res.error);
             if (!res.error) formRef.current?.reset();
           })}
         >
+          <input name="code" placeholder="Store #" className="input" aria-label="Store number" />
           <input name="name" required placeholder="Store name" className="input" aria-label="Store name" />
-          <input name="code" placeholder="Code (optional)" className="input" aria-label="Store code" />
           <input name="region" placeholder="Region (optional)" className="input" aria-label="Region" />
           <button className="btn btn-primary" disabled={pending}>Add store</button>
           {error && <p className="text-sm text-red-600 sm:col-span-4">{error}</p>}
@@ -51,9 +51,9 @@ function StoreRow({ store: s }: { store: Store }) {
 
   if (editing) {
     return (
-      <div className="grid gap-2 p-3 sm:grid-cols-[2fr_1fr_1fr_auto]">
+      <div className="grid gap-2 p-3 sm:grid-cols-[1fr_2fr_1fr_auto]">
+        <input className="input" value={code} onChange={(e) => setCode(e.target.value)} aria-label="Store number" placeholder="Store #" />
         <input className="input" value={name} onChange={(e) => setName(e.target.value)} aria-label="Name" />
-        <input className="input" value={code} onChange={(e) => setCode(e.target.value)} aria-label="Code" />
         <input className="input" value={region} onChange={(e) => setRegion(e.target.value)} aria-label="Region" />
         <div className="flex gap-2">
           <button className="btn" onClick={() => setEditing(false)}>Cancel</button>
@@ -67,8 +67,8 @@ function StoreRow({ store: s }: { store: Store }) {
   return (
     <div className={`flex flex-wrap items-center gap-3 p-3 ${s.active ? "" : "opacity-60"}`}>
       <div className="flex-1">
-        <div className="font-medium">{s.name}{!s.active && <span className="ml-2 text-xs text-gray-500">closed</span>}</div>
-        <div className="text-sm text-gray-500">{[s.code, s.region].filter(Boolean).join(" · ") || "—"}</div>
+        <div className="font-medium">{s.code && <span className="text-gray-500">#{s.code} </span>}{s.name}{!s.active && <span className="ml-2 text-xs text-gray-500">closed</span>}</div>
+        <div className="text-sm text-gray-500">{s.region || "—"}</div>
       </div>
       <button className="btn" onClick={() => setEditing(true)}>Edit</button>
       <button className="btn" disabled={pending} onClick={() => {

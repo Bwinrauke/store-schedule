@@ -5,18 +5,11 @@ import { NavLinks } from "./NavLinks";
 
 export async function Shell({ children }: { children: React.ReactNode }) {
   const profile = await getProfile();
-  const links =
-    profile.role === "executive"
-      ? [
-          { href: "/overview", label: "Overview" },
-          { href: "/schedule", label: "Schedules" },
-          { href: "/employees", label: "Employees" },
-          { href: "/admin", label: "Admin" },
-        ]
-      : [
-          { href: "/schedule", label: "Schedule" },
-          { href: "/employees", label: "Employees" },
-        ];
+  const links = [
+    { href: "/overview", label: "Overview" },
+    { href: "/schedule", label: "Store schedules" },
+    { href: "/admin", label: "Admin" },
+  ];
 
   return (
     <div className="min-h-screen">
@@ -29,9 +22,6 @@ export async function Shell({ children }: { children: React.ReactNode }) {
           <div className="ml-auto flex items-center gap-3 text-sm text-gray-500">
             <span className="hidden sm:inline">
               {profile.full_name || profile.email}
-              <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
-                {profile.role === "executive" ? "Upper management" : "Store manager"}
-              </span>
             </span>
             <SignOutButton />
           </div>

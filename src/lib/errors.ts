@@ -5,9 +5,7 @@ export function friendlyError(error: { code?: string; message: string } | null):
     case "23P01":
       return "That person is already scheduled during part of that time.";
     case "23514":
-      return "Check the times: the shift must end after it starts, and breaks are 0–240 minutes.";
-    case "23503":
-      return "That employee isn't on this store's roster.";
+      return "Check the times: each shift must end after it starts.";
     case "23505":
       return "That already exists.";
     case "42501":
