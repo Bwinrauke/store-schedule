@@ -3,7 +3,7 @@
 Weekly employee schedules for every store, in one place.
 
 - **Store managers** need no account. On the sign-in page they tap **Store
-  managers**, type their store number (or pick it from a list), and enter the
+  managers**, pick their store from the dropdown, and enter the
   store's 4-digit PIN; their phone remembers it. Then they go **day by day**:
   for each day, add who's working with their name, role (Cashier, Sales
   Associate or Keyholder), and start and end time (8:00 AM–9:00 PM, 15-minute
