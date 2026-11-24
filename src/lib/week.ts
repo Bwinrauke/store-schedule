@@ -66,14 +66,14 @@ export function minutesOf(time: string): number {
   return h * 60 + m;
 }
 
-/** "13:30:00" -> "1:30p", "09:00" -> "9a" */
+/** "13:30:00" -> "1:30 PM", "09:00" -> "9:00 AM" */
 export function formatTime(time: string): string {
   const total = minutesOf(time);
   const h = Math.floor(total / 60);
   const m = total % 60;
-  const suffix = h < 12 ? "a" : "p";
+  const suffix = h < 12 ? "AM" : "PM";
   const h12 = h % 12 === 0 ? 12 : h % 12;
-  return m === 0 ? `${h12}${suffix}` : `${h12}:${String(m).padStart(2, "0")}${suffix}`;
+  return `${h12}:${String(m).padStart(2, "0")} ${suffix}`;
 }
 
 /** Paid hours, net of break, matching public.shift_hours in the database. */

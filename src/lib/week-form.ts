@@ -17,9 +17,13 @@ export type SavePayloadRow = {
 
 export const emptyDays = () => Array.from({ length: 7 }, () => ({ start: "", end: "" }));
 
-/** Half-hour choices, 5:00a through 11:30p. */
-export const TIME_OPTIONS: string[] = Array.from({ length: 38 }, (_, i) => {
-  const minutes = 5 * 60 + i * 30;
+/** Store hours. The database enforces the same limits. */
+export const OPEN_TIME = "08:00";
+export const CLOSE_TIME = "21:00";
+
+/** 15-minute choices from 8:00 AM through 9:00 PM. */
+export const TIME_OPTIONS: string[] = Array.from({ length: (21 - 8) * 4 + 1 }, (_, i) => {
+  const minutes = 8 * 60 + i * 15;
   return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 });
 
@@ -49,6 +53,9 @@ export function buildPayload(rows: FormRow[], week: string): { rows: SavePayload
       if (!start && !end) continue;
       if (!start || !end) return { error: `${name}: set both a start and an end time, or mark the day off.` };
       if (end <= start) return { error: `${name}: a shift ends before it starts.` };
+      if (!TIME_OPTIONS.includes(start) || !TIME_OPTIONS.includes(end)) {
+        return { error: `${name}: shifts must be between 8:00 AM and 9:00 PM, in 15-minute steps.` };
+      }
       days.push({ date: addDays(week, i), start, end });
     }
     out.push({ name, role: r.role, days });

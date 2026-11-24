@@ -50,6 +50,18 @@ do $$ begin
   begin perform public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', '  ', '[]');
     raise exception 'FAIL: blank submitter accepted';
   exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
+  begin perform public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'M',
+      '[{"name":"Ann Lee","role":"Cashier","days":[{"date":"2026-11-22","start":"07:45","end":"12:00"}]}]');
+    raise exception 'FAIL: before 8 AM accepted';
+  exception when check_violation then null; end;
+  begin perform public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'M',
+      '[{"name":"Ann Lee","role":"Cashier","days":[{"date":"2026-11-22","start":"13:00","end":"21:15"}]}]');
+    raise exception 'FAIL: after 9 PM accepted';
+  exception when check_violation then null; end;
+  begin perform public.save_week('10000000-0000-0000-0000-00000000000a', '2026-11-22', 'M',
+      '[{"name":"Ann Lee","role":"Cashier","days":[{"date":"2026-11-22","start":"09:10","end":"12:00"}]}]');
+    raise exception 'FAIL: off-quarter-hour accepted';
+  exception when check_violation then null; end;
   -- A failed save must leave the previous week intact.
   assert (select count(*) from public.shifts) = 1, 'failed saves roll back';
 end $$;

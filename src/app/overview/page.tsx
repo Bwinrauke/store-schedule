@@ -136,7 +136,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
                     {list.map((s, i) => (
                       <li key={i} className="flex justify-between gap-2">
                         <span>{s.employee_name} <span className="text-gray-500">· {s.role}</span></span>
-                        <span className="text-gray-600 tabular">{formatTime(s.start_time)}–{formatTime(s.end_time)}</span>
+                        <span className="whitespace-nowrap text-gray-600 tabular">{formatTime(s.start_time)} – {formatTime(s.end_time)}</span>
                       </li>
                     ))}
                   </ul>

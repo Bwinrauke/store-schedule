@@ -98,6 +98,7 @@ psql -d schedule_test -v ON_ERROR_STOP=1 \
   -f supabase/migrations/20261124000000_init.sql \
   -f supabase/migrations/20261124000100_harden.sql \
   -f supabase/migrations/20261124000200_link_access.sql \
+  -f supabase/migrations/20261124000300_business_hours.sql \
   -f supabase/tests/rls_test.sql
 # → ALL TESTS PASSED
 ```

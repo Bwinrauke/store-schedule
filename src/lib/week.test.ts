@@ -26,11 +26,12 @@ describe("dates", () => {
 });
 
 describe("time", () => {
-  it("formats compactly", () => {
-    expect(formatTime("09:00:00")).toBe("9a");
-    expect(formatTime("12:00")).toBe("12p");
-    expect(formatTime("13:30:00")).toBe("1:30p");
-    expect(formatTime("00:15")).toBe("12:15a");
+  it("formats with full AM/PM", () => {
+    expect(formatTime("09:00:00")).toBe("9:00 AM");
+    expect(formatTime("12:00")).toBe("12:00 PM");
+    expect(formatTime("13:30:00")).toBe("1:30 PM");
+    expect(formatTime("20:45")).toBe("8:45 PM");
+    expect(formatTime("00:15")).toBe("12:15 AM");
   });
   it("nets the break off paid hours", () => {
     expect(shiftHours("09:00", "17:30", 30)).toBe(8);

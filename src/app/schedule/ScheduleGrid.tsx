@@ -11,7 +11,7 @@ export function ScheduleGrid({ week, employees, shifts }: { week: string; employ
 
   return (
     <div className="card overflow-x-auto">
-      <table className="w-full min-w-[900px] border-collapse text-sm">
+      <table className="w-full min-w-[980px] border-collapse text-sm">
         <thead>
           <tr className="border-b border-gray-200 bg-gray-50 text-left">
             <th className="sticky left-0 z-10 w-32 bg-gray-50 px-3 py-2 font-medium text-gray-600 sm:w-48">Employee</th>
@@ -40,8 +40,9 @@ export function ScheduleGrid({ week, employees, shifts }: { week: string; employ
                 {days.map((d) => (
                   <td key={d} className={`px-2 py-2 ${d === today ? "bg-brand-50/40" : ""}`}>
                     {mine.filter((s) => s.shift_date === d).map((s) => (
-                      <div key={s.id} className="rounded-md bg-brand-50 px-2 py-1 font-medium text-brand-700 tabular">
-                        {formatTime(s.start_time)}–{formatTime(s.end_time)}
+                      <div key={s.id} className="rounded-md bg-brand-50 px-2 py-1 text-xs font-medium whitespace-nowrap text-brand-700 tabular">
+                        <div>{formatTime(s.start_time)} –</div>
+                        <div>{formatTime(s.end_time)}</div>
                       </div>
                     ))}
                   </td>

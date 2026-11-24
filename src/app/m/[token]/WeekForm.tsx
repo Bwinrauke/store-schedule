@@ -175,11 +175,12 @@ export function WeekForm({
               const off = !day.start && !day.end;
               return (
                 <div key={d} className={`flex items-center gap-2 rounded-lg border p-2 md:flex-col md:items-stretch ${off ? "border-gray-200 bg-gray-50" : "border-brand-100 bg-brand-50/50"}`}>
-                  <div className="w-24 shrink-0 text-sm whitespace-nowrap md:w-auto">
-                    <span className="font-medium">{dow}</span> <span className="text-gray-500">{date}</span>
+                  <div className="w-14 shrink-0 text-sm leading-tight md:w-auto md:whitespace-nowrap">
+                    <span className="block font-medium md:inline">{dow}</span>{" "}
+                    <span className="block text-xs text-gray-500 md:inline md:text-sm">{date}</span>
                   </div>
                   <TimeSelect label={`${dow} start`} value={day.start} placeholder="Off" onChange={(v) => setDay(r.key, i, "start", v)} />
-                  <span className="text-gray-400 md:hidden">–</span>
+                  <span className="text-gray-400 md:hidden" aria-hidden>–</span>
                   <TimeSelect label={`${dow} end`} value={day.end} placeholder={off ? "Off" : "End"} onChange={(v) => setDay(r.key, i, "end", v)} />
                 </div>
               );
@@ -220,7 +221,7 @@ export function WeekForm({
 
 function TimeSelect({ label, value, placeholder, onChange }: { label: string; value: string; placeholder: string; onChange: (v: string) => void }) {
   return (
-    <select aria-label={label} className="input min-h-9 flex-1 px-2 py-1 text-sm" value={value} onChange={(e) => onChange(e.target.value)}>
+    <select aria-label={label} className="input min-h-9 min-w-0 flex-1 py-1 pr-1 pl-2 text-sm" value={value} onChange={(e) => onChange(e.target.value)}>
       <option value="">{placeholder}</option>
       {TIME_OPTIONS.map((t) => (
         <option key={t} value={t}>{formatTime(t)}</option>
