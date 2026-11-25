@@ -12,6 +12,8 @@ Weekly employee schedules for every store, in one place.
   Monday's shifts" fills a day from the one before, and a running list shows
   each person's hours for the week. They type their own name once and press
   **Save week**. Next week, **Start from last week** fills it all in.
+  The **Saved week** tab shows what's saved for the whole week (a grid on a
+  computer, a day-by-day list on a phone), with a Print button.
 - **Upper management** signs in and gets an overview of every store for any
   week: hours by role, total vs last week, who submitted and when, which
   stores haven't submitted, days with nobody on, and who is working today.

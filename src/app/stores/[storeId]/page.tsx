@@ -4,19 +4,21 @@ import { WeekToolbar } from "@/components/WeekToolbar";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { isStaffRole } from "@/lib/roles";
 import { hasStoreAccess, storeHasPin } from "@/lib/storeAccess";
-import type { Shift, Store } from "@/lib/types";
+import type { Employee, Shift, Store } from "@/lib/types";
 import { addDays, resolveWeek, todayIso } from "@/lib/week";
 import type { Entry } from "@/lib/week-form";
 import { ManagerHeader } from "../ManagerHeader";
 import { LeaveStoreButton } from "./LeaveStoreButton";
 import { PinForm } from "./PinForm";
+import { SavedWeek, type ShiftWithEmployee } from "./SavedWeek";
+import { ViewTabs } from "./ViewTabs";
 import { WeekForm } from "./WeekForm";
 
 export const metadata = { title: "Weekly Schedule", robots: { index: false, follow: false } };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type ShiftWithName = Shift & { employees: { full_name: string; vrp_code: string | null } | null };
+type ShiftWithName = Shift & { employees: Employee | null };
 
 function toEntries(shifts: ShiftWithName[], week: string): Entry[] {
   return shifts
@@ -38,7 +40,7 @@ export default async function StoreWeekPage({
   searchParams,
 }: {
   params: Promise<{ storeId: string }>;
-  searchParams: Promise<{ week?: string }>;
+  searchParams: Promise<{ week?: string; view?: string }>;
 }) {
   const { storeId } = await params;
   if (!UUID.test(storeId)) notFound();
@@ -76,8 +78,11 @@ export default async function StoreWeekPage({
     );
   }
 
-  const week = resolveWeek((await searchParams).week);
-  const shiftCols = "id, store_id, employee_id, shift_date, start_time, end_time, break_minutes, role, note, employees(full_name, vrp_code)";
+  const sp = await searchParams;
+  const week = resolveWeek(sp.week);
+  const view = sp.view === "saved" ? "saved" : "edit";
+  const shiftCols =
+    "id, store_id, employee_id, shift_date, start_time, end_time, break_minutes, role, note, employees(id, store_id, full_name, role, vrp_code, active)";
   const [{ data: thisWeek }, { data: lastWeek }, { data: roster }, { data: submission }] = await Promise.all([
     db.from("shifts").select(shiftCols).eq("store_id", store.id).gte("shift_date", week).lte("shift_date", addDays(week, 6)),
     db.from("shifts").select(shiftCols).eq("store_id", store.id).gte("shift_date", addDays(week, -7)).lte("shift_date", addDays(week, -1)),
@@ -96,16 +101,25 @@ export default async function StoreWeekPage({
           <Link href="/stores" className="text-sm text-brand-600 hover:underline">Change store</Link>
         </div>
         <WeekToolbar week={week} />
-        <WeekForm
-          key={`${store.id}|${week}`}
-          storeId={store.id}
-          week={week}
-          initialEntries={toEntries((thisWeek ?? []) as unknown as ShiftWithName[], week)}
-          lastWeekEntries={toEntries((lastWeek ?? []) as unknown as ShiftWithName[], addDays(week, -7))}
-          roster={(roster ?? []).map((r) => ({ name: r.full_name as string, role: r.role as string, code: (r.vrp_code as string | null) ?? "" }))}
-          submission={submission ? { by: submission.submitted_by as string, at: submission.submitted_at as string } : null}
-          today={todayIso()}
-        />
+        <ViewTabs week={week} active={view} />
+        {view === "saved" ? (
+          <SavedWeek
+            week={week}
+            shifts={(thisWeek ?? []) as unknown as ShiftWithEmployee[]}
+            submission={submission ? { by: submission.submitted_by as string, at: submission.submitted_at as string } : null}
+          />
+        ) : (
+          <WeekForm
+            key={`${store.id}|${week}`}
+            storeId={store.id}
+            week={week}
+            initialEntries={toEntries((thisWeek ?? []) as unknown as ShiftWithName[], week)}
+            lastWeekEntries={toEntries((lastWeek ?? []) as unknown as ShiftWithName[], addDays(week, -7))}
+            roster={(roster ?? []).map((r) => ({ name: r.full_name as string, role: r.role as string, code: (r.vrp_code as string | null) ?? "" }))}
+            submission={submission ? { by: submission.submitted_by as string, at: submission.submitted_at as string } : null}
+            today={todayIso()}
+          />
+        )}
       </main>
     </div>
   );

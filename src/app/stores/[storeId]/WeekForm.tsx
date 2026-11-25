@@ -62,12 +62,25 @@ export function WeekForm({
     } catch {}
   }, []);
 
-  // Warn before leaving with unsaved changes.
+  // Warn before leaving with unsaved changes: closing the tab, and in-app
+  // links (Saved week, week arrows, Change store), which beforeunload misses.
   useEffect(() => {
     if (!dirty) return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    const guardLinks = (e: MouseEvent) => {
+      const link = (e.target as HTMLElement | null)?.closest?.("a[href]");
+      if (!link || e.defaultPrevented) return;
+      if (!confirm("You have unsaved changes. Leave without saving?")) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
     window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
+    document.addEventListener("click", guardLinks, true);
+    return () => {
+      window.removeEventListener("beforeunload", warn);
+      document.removeEventListener("click", guardLinks, true);
+    };
   }, [dirty]);
 
   const changed = (next: Entry[]) => {
@@ -442,6 +455,14 @@ export function WeekForm({
             {status ? (
               <p className={`text-sm leading-snug ${status.error ? "text-red-600" : "text-emerald-700"}`} role="status">
                 {status.error ?? status.message}
+                {!status.error && (
+                  <>
+                    {" "}
+                    <a href={`?week=${week}&view=saved`} className="font-medium whitespace-nowrap underline">
+                      View saved week →
+                    </a>
+                  </>
+                )}
               </p>
             ) : (
               <p className="text-sm text-gray-600">

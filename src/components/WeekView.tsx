@@ -69,7 +69,12 @@ export function ScheduleGrid({ week, employees, shifts }: { week: string; employ
                   ) : (
                     <>
                       <div className="font-medium text-gray-900">{formatHours(sum(ds))} h</div>
-                      <div className="text-xs">{new Set(ds.map((s) => s.employee_id)).size} people</div>
+                      <div className="text-xs">
+                        {(() => {
+                          const n = new Set(ds.map((s) => s.employee_id)).size;
+                          return `${n} ${n === 1 ? "person" : "people"}`;
+                        })()}
+                      </div>
                     </>
                   )}
                 </td>

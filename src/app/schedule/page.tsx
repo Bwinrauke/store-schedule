@@ -4,8 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getMyStores, requireExecutive } from "@/lib/session";
 import type { Employee, Shift } from "@/lib/types";
 import { addDays, resolveWeek } from "@/lib/week";
-import { ScheduleDayList, ScheduleGrid } from "./ScheduleGrid";
-import { PrintButton } from "./PrintButton";
+import { ScheduleDayList, ScheduleGrid } from "@/components/WeekView";
+import { PrintButton } from "@/components/PrintButton";
 
 export default async function SchedulePage({ searchParams }: { searchParams: Promise<{ store?: string; week?: string }> }) {
   await requireExecutive();
